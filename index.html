@@ -1,0 +1,3378 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>poolrooms by subham</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- WebRTC PeerJS for Cross-Device Direct P2P Multiplayer (Phones, PCs, Macs, different networks) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+    <!-- Public MQTT over WebSockets library for static hosting relay fallback -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <style>
+      :root {
+        --primary: #7ce3d0;
+        --primary-glow: rgba(124, 227, 208, 0.45);
+        --primary-deep: #164645;
+        --accent-cyan: #3bf0d0;
+        --accent-yellow: #ffcc00;
+        --accent-yellow-glow: rgba(255, 204, 0, 0.45);
+        --bg-glass-card: rgba(5, 18, 20, 0.82);
+        --border-glass: rgba(124, 227, 208, 0.25);
+        --border-bright: rgba(124, 227, 208, 0.65);
+        --text-main: rgba(245, 249, 247, 0.96);
+        --text-muted: rgba(220, 240, 235, 0.75);
+        --danger: #ff5b5b;
+        --danger-glow: rgba(255, 91, 91, 0.5);
+      }
+      body, html {
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        overflow: hidden; background-color: #01080a;
+        user-select: none; -webkit-user-select: none;
+        font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+      }
+      canvas { display: block; width: 100vw; height: 100vh; }
+      #error-msg {
+        display: none; color: #ff5b5b; font-family: 'JetBrains Mono', monospace;
+        font-size: 13px; line-height: 1.6; padding: 18px 24px; position: absolute; top: 0; left: 0;
+        z-index: 999; background: rgba(5, 12, 14, 0.95);
+        width: 100%; box-sizing: border-box; border-bottom: 2px solid #ff5b5b;
+        backdrop-filter: blur(10px);
+      }
+
+      /* === USERNAME GATE MODAL (BEFORE ENTERING) === */
+      #username-gate-modal {
+        position: fixed; inset: 0; z-index: 1000;
+        display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 50% 45%, rgba(14, 48, 46, 0.85), rgba(1, 8, 10, 0.98) 75%), rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+        color: var(--text-main);
+        transition: opacity 400ms cubic-bezier(0.16, 1, 0.3, 1), visibility 400ms ease;
+      }
+      #username-gate-modal.hidden {
+        opacity: 0; visibility: hidden; pointer-events: none;
+      }
+      .username-card {
+        position: relative; width: min(440px, calc(100vw - 36px));
+        padding: 42px 38px 36px; text-align: center;
+        border: 1.5px solid var(--border-bright); background: var(--bg-glass-card);
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.85), 0 0 60px rgba(124, 227, 208, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+        border-radius: 12px; overflow: hidden;
+        animation: card-appear 450ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes card-appear {
+        from { transform: scale(0.92) translateY(10px); opacity: 0; }
+        to { transform: scale(1) translateY(0); opacity: 1; }
+      }
+      .gate-kicker {
+        margin-bottom: 12px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3em; text-transform: uppercase;
+        color: var(--accent-yellow); display: inline-flex; align-items: center; gap: 8px;
+        padding: 5px 14px; border-radius: 20px;
+        background: rgba(255, 204, 0, 0.10); border: 1px solid rgba(255, 204, 0, 0.3);
+      }
+      .gate-title {
+        margin: 0 0 8px; font-size: clamp(24px, 4vw, 32px); font-weight: 800;
+        letter-spacing: 0.20em; text-transform: uppercase;
+        background: linear-gradient(135deg, #ffffff 0%, #dff7f2 40%, #7ce3d0 80%, #ffffff 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        filter: drop-shadow(0 0 16px rgba(124, 227, 208, 0.3));
+      }
+      .gate-subtitle {
+        margin: 0 0 24px; font-size: 11px; font-weight: 500;
+        letter-spacing: 0.18em; color: rgba(200, 228, 222, 0.65); text-transform: uppercase;
+      }
+      .gate-input-wrap {
+        display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; text-align: left;
+      }
+      .gate-label {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+        color: rgba(220, 245, 238, 0.85);
+      }
+      .gate-input {
+        width: 100%; height: 50px; box-sizing: border-box; border-radius: 6px;
+        background: rgba(3, 14, 16, 0.85); border: 1.5px solid rgba(124, 227, 208, 0.4);
+        color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700;
+        letter-spacing: 0.14em; padding: 0 16px; outline: none;
+        box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 15px rgba(124, 227, 208, 0.08);
+        transition: all 200ms ease;
+      }
+      .gate-input:focus {
+        border-color: #ffcc00; box-shadow: 0 0 22px rgba(255, 204, 0, 0.35), inset 0 2px 8px rgba(0,0,0,0.6);
+        color: #ffcc00;
+      }
+      .gate-input::placeholder {
+        color: rgba(124, 227, 208, 0.3); letter-spacing: 0.14em;
+      }
+      .gate-btn {
+        appearance: none; outline: none; border: 1px solid rgba(255, 204, 0, 0.65);
+        background: linear-gradient(135deg, rgba(255, 204, 0, 0.25) 0%, rgba(120, 95, 0, 0.5) 100%);
+        color: #ffffff; padding: 15px 30px; width: 100%; cursor: pointer;
+        font-family: inherit; font-size: 12px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase;
+        border-radius: 6px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 20px rgba(255, 204, 0, 0.25);
+        display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+        transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .gate-btn:hover {
+        background: linear-gradient(135deg, rgba(255, 204, 0, 0.4) 0%, rgba(160, 125, 0, 0.65) 100%);
+        border-color: #ffcc00; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.65), 0 0 30px rgba(255, 204, 0, 0.5);
+        transform: translateY(-2px);
+      }
+      .gate-feedback {
+        margin-top: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+        color: rgba(220, 240, 235, 0.6); min-height: 16px;
+      }
+
+      /* === START MENU === */
+      #poolrooms-start-menu {
+        position: fixed; inset: 0; z-index: 100;
+        display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 50% 46%, rgba(16, 54, 52, 0.45), rgba(1, 8, 10, 0.85) 75%), rgba(0, 0, 0, 0.60);
+        backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
+        color: var(--text-main);
+        transition: opacity 480ms cubic-bezier(0.16, 1, 0.3, 1), visibility 480ms ease;
+        overflow: hidden;
+      }
+      #poolrooms-start-menu::before {
+        content: ''; position: absolute; inset: -40%;
+        background: radial-gradient(ellipse at 35% 35%, rgba(124, 227, 208, 0.09) 0%, transparent 45%),
+                    radial-gradient(ellipse at 65% 65%, rgba(59, 240, 208, 0.07) 0%, transparent 45%),
+                    radial-gradient(circle at 50% 50%, rgba(18, 62, 65, 0.12) 0%, transparent 60%);
+        animation: ambient-caustic-drift 22s ease-in-out infinite alternate; pointer-events: none;
+      }
+      @keyframes ambient-caustic-drift {
+        0% { transform: scale(1) rotate(0deg); opacity: 0.75; }
+        50% { transform: scale(1.08) rotate(2.5deg); opacity: 1; }
+        100% { transform: scale(1.04) rotate(-2deg); opacity: 0.85; }
+      }
+      #poolrooms-start-menu.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+      .poolrooms-menu-card {
+        position: relative; min-width: min(480px, calc(100vw - 40px)); max-width: 530px;
+        padding: 38px 38px 32px; text-align: center;
+        border: 1px solid var(--border-glass); background: var(--bg-glass-card);
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.75), 0 0 50px rgba(124, 227, 208, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
+        border-radius: 10px; overflow: hidden;
+        transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 300ms ease;
+      }
+      .poolrooms-menu-card::before {
+        content: ''; position: absolute; inset: 0;
+        background: radial-gradient(460px circle at var(--mx, 50%) var(--my, 20%), rgba(124, 227, 208, 0.14), transparent 65%);
+        pointer-events: none; border-radius: inherit;
+      }
+      .poolrooms-menu-card::after {
+        content: ''; position: absolute; inset: 5px;
+        border: 1px solid rgba(124, 227, 208, 0.08); border-radius: 6px; pointer-events: none;
+      }
+      .poolrooms-menu-kicker {
+        margin-bottom: 12px; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase;
+        color: var(--primary); display: inline-flex; align-items: center; gap: 8px;
+        padding: 4px 14px; border-radius: 20px;
+        background: rgba(124, 227, 208, 0.09); border: 1px solid rgba(124, 227, 208, 0.25);
+      }
+      .kicker-beacon {
+        width: 6px; height: 6px; border-radius: 50%; background: #57e0c4; box-shadow: 0 0 8px #57e0c4;
+        animation: beacon-pulse 2s infinite ease-in-out;
+      }
+      @keyframes beacon-pulse {
+        0%, 100% { transform: scale(1); opacity: 0.65; }
+        50% { transform: scale(1.35); opacity: 1; box-shadow: 0 0 12px #57e0c4; }
+      }
+      .poolrooms-menu-name {
+        margin: 0 0 4px; font-size: clamp(28px, 4.5vw, 40px); font-weight: 800;
+        letter-spacing: 0.24em; text-transform: uppercase;
+        background: linear-gradient(135deg, #ffffff 0%, #dff7f2 35%, #7ce3d0 70%, #ffffff 100%);
+        background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        animation: liquid-shimmer 8s ease infinite; filter: drop-shadow(0 0 20px rgba(124, 227, 208, 0.25));
+      }
+      @keyframes liquid-shimmer {
+        0% { background-position: 0% center; }
+        50% { background-position: 100% center; }
+        100% { background-position: 0% center; }
+      }
+      .poolrooms-menu-subtitle {
+        margin: 0 0 18px; font-size: 10.5px; font-weight: 500;
+        letter-spacing: 0.22em; color: rgba(200, 228, 222, 0.55); text-transform: uppercase;
+      }
+      .user-active-chip {
+        display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px;
+        padding: 5px 14px; border-radius: 20px; font-size: 11px; font-family: 'JetBrains Mono', monospace;
+        background: rgba(255, 204, 0, 0.08); border: 1px solid rgba(255, 204, 0, 0.3); color: #ffdd55;
+        cursor: pointer; transition: all 180ms ease;
+      }
+      .user-active-chip:hover {
+        background: rgba(255, 204, 0, 0.18); border-color: #ffcc00; transform: translateY(-1px);
+      }
+      .controls-guide {
+        margin-bottom: 20px; font-size: 12px; line-height: 1.55; color: var(--text-muted);
+        background: rgba(3, 14, 16, 0.6); padding: 15px; border-radius: 8px;
+        border: 1px solid rgba(124, 227, 208, 0.16); box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35);
+        display: flex; flex-direction: column; gap: 9px; text-align: left;
+      }
+      .ctrl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .ctrl-keys { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+      .keycap {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 22px; height: 22px; padding: 0 6px;
+        font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 10px; font-weight: 700; color: #7ce3d0;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(18, 48, 50, 0.6) 100%);
+        border: 1px solid rgba(124, 227, 208, 0.35); border-bottom: 2px solid rgba(124, 227, 208, 0.55);
+        border-radius: 4px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        transition: all 120ms ease;
+      }
+      .keycap:hover {
+        transform: translateY(1px); border-bottom-width: 1px; color: #fff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 8px rgba(124, 227, 208, 0.4);
+      }
+      .keycap-sm { min-width: 18px; height: 18px; font-size: 9px; padding: 0 4px; }
+      .ctrl-desc { font-size: 11.5px; color: rgba(225, 245, 240, 0.88); letter-spacing: 0.02em; }
+      .ctrl-footer {
+        display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+        margin-top: 2px; padding-top: 10px; border-top: 1px solid rgba(124, 227, 208, 0.12);
+        font-size: 10px; color: rgba(200, 228, 222, 0.65);
+      }
+      .ctrl-hint-chip { display: inline-flex; align-items: center; gap: 5px; color: rgba(210, 238, 232, 0.85); }
+      .ctrl-version-badge {
+        display: inline-flex; align-items: center; gap: 5px; color: #ffcc00; font-weight: 600;
+        letter-spacing: 0.06em; background: rgba(255, 204, 0, 0.08); padding: 2px 8px;
+        border-radius: 4px; border: 1px solid rgba(255, 204, 0, 0.25);
+      }
+      .sensitivity-row {
+        display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px;
+        font-size: 11px; letter-spacing: 0.06em; color: var(--text-muted); text-align: left;
+      }
+      .sensitivity-header { display: flex; justify-content: space-between; align-items: center; }
+      .sensitivity-label { font-weight: 600; color: rgba(230, 245, 240, 0.9); letter-spacing: 0.06em; }
+      .sensitivity-val {
+        font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 700; color: #7ce3d0;
+        background: rgba(124, 227, 208, 0.12); border: 1px solid rgba(124, 227, 208, 0.3);
+        padding: 2px 8px; border-radius: 4px; min-width: 44px; text-align: center;
+      }
+      .sensitivity-row input[type="range"] {
+        -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px;
+        background: linear-gradient(90deg, #7ce3d0 35%, rgba(255, 255, 255, 0.12) 35%);
+        outline: none; cursor: pointer; transition: background 150ms ease;
+      }
+      .sensitivity-row input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
+        background: #7ce3d0; border: 2px solid #ffffff;
+        box-shadow: 0 0 10px rgba(124, 227, 208, 0.6), 0 2px 5px rgba(0, 0, 0, 0.4);
+        cursor: grab; transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+      .sensitivity-row input[type="range"]::-webkit-slider-thumb:hover {
+        transform: scale(1.18); box-shadow: 0 0 16px rgba(124, 227, 208, 0.9), 0 2px 6px rgba(0, 0, 0, 0.5);
+      }
+      .sensitivity-row input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.05); }
+      #poolrooms-start-button {
+        position: relative; appearance: none; outline: none; border: 1px solid rgba(124, 227, 208, 0.45);
+        background: linear-gradient(135deg, rgba(124, 227, 208, 0.22) 0%, rgba(20, 70, 72, 0.4) 100%);
+        color: #ffffff; padding: 15px 36px; min-width: 200px; cursor: pointer;
+        font-family: inherit; font-size: 12.5px; font-weight: 800; letter-spacing: 0.26em; text-transform: uppercase;
+        border-radius: 6px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 22px rgba(124, 227, 208, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        overflow: hidden; transition: all 220ms cubic-bezier(0.16, 1, 0.3, 1);
+        display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      }
+      #poolrooms-start-button::before {
+        content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+        transform: skewX(-20deg); transition: left 600ms ease;
+      }
+      #poolrooms-start-button:hover {
+        background: linear-gradient(135deg, rgba(124, 227, 208, 0.35) 0%, rgba(24, 95, 95, 0.55) 100%);
+        border-color: #7ce3d0; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 34px rgba(124, 227, 208, 0.45), inset 0 1px 0 #ffffff;
+        transform: translateY(-2px);
+      }
+      #poolrooms-start-button:hover::before { left: 200%; }
+      #poolrooms-start-button:active {
+        transform: translateY(0); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 16px rgba(124, 227, 208, 0.25);
+      }
+      .btn-dive-icon { width: 15px; height: 15px; color: #7ce3d0; transition: transform 200ms ease; }
+      #poolrooms-start-button:hover .btn-dive-icon { transform: translateY(2px); }
+
+      /* In-game crosshair & effects */
+      #crosshair {
+        position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+        background: #ffffff; border-radius: 50%; transform: translate(-50%, -50%);
+        pointer-events: none; display: none; z-index: 50; box-shadow: 0 0 6px #7ce3d0;
+        transition: transform 140ms ease, opacity 140ms ease;
+      }
+      #crosshair::before, #crosshair::after {
+        content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        pointer-events: none; border: 1px solid rgba(124, 227, 208, 0.55); border-radius: 50%;
+        transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #crosshair::before {
+        width: 22px; height: 22px; opacity: 0.5;
+        border-top-color: transparent; border-bottom-color: transparent;
+      }
+      #crosshair.zooming::before {
+        width: 12px; height: 12px; opacity: 0.9; border-color: #7ce3d0;
+      }
+      #vignette {
+        position: fixed; inset: 0; pointer-events: none; z-index: 40;
+        background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+        opacity: 0; transition: opacity 600ms ease, background 600ms ease;
+      }
+      #vignette.underwater {
+        opacity: 0.45;
+        background: radial-gradient(circle at 50% 50%, rgba(20, 40, 60, 0.1) 40%, rgba(5, 15, 25, 0.65) 100%);
+      }
+      #vignette.low-oxygen {
+        opacity: 0.85;
+        background: radial-gradient(circle at 50% 50%, rgba(120, 10, 10, 0.05) 35%, rgba(90, 5, 5, 0.7) 100%);
+      }
+      #hud {
+        position: fixed; top: 18px; left: 18px; z-index: 45;
+        font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 11px;
+        letter-spacing: 0.06em; color: rgba(225, 245, 240, 0.92);
+        background: rgba(4, 16, 18, 0.65); border: 1px solid rgba(124, 227, 208, 0.22);
+        border-left: 3px solid #7ce3d0; padding: 12px 16px; border-radius: 6px;
+        display: none; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        line-height: 1.8; pointer-events: none;
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), inset 0 0 20px rgba(124, 227, 208, 0.03);
+      }
+      #hud.visible { display: block; }
+      .hud-stat-line { display: flex; align-items: center; gap: 8px; }
+      .hud-dot {
+        width: 6px; height: 6px; border-radius: 50%; background: #57e0c4;
+        display: inline-block; box-shadow: 0 0 6px #57e0c4; flex-shrink: 0;
+      }
+      .hud-dot.amber { background: #ffaa44; box-shadow: 0 0 6px #ffaa44; }
+      .hud-dot.red { background: #ff5b5b; box-shadow: 0 0 6px #ff5b5b; }
+      .hud-dot.yellow { background: #ffcc00; box-shadow: 0 0 8px #ffcc00; }
+      #hud-compass {
+        margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(124, 227, 208, 0.18);
+        font-size: 10px; color: #7ce3d0; font-weight: 700; display: flex; align-items: center; gap: 6px;
+      }
+      #hud-hint {
+        opacity: 0.55; margin-top: 6px; font-size: 9.5px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 4px;
+      }
+      #oxygen-wrap {
+        position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%);
+        z-index: 45; display: none; flex-direction: column; align-items: center; gap: 6px;
+        font-family: 'Inter', sans-serif;
+        background: rgba(4, 16, 18, 0.65); border: 1px solid rgba(124, 227, 208, 0.22);
+        padding: 8px 18px; border-radius: 30px;
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 20px rgba(124, 227, 208, 0.12);
+        transition: all 250ms ease;
+      }
+      #oxygen-wrap.visible { display: flex; }
+      #oxygen-wrap.critical {
+        border-color: rgba(255, 91, 91, 0.7);
+        box-shadow: 0 0 30px rgba(255, 91, 91, 0.5), 0 12px 36px rgba(0, 0, 0, 0.6);
+        animation: rebreather-pulse 0.8s infinite alternate;
+      }
+      @keyframes rebreather-pulse {
+        0% { transform: translateX(-50%) scale(1); }
+        100% { transform: translateX(-50%) scale(1.04); }
+      }
+      .oxygen-header {
+        display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;
+      }
+      #oxygen-label {
+        font-size: 9px; font-weight: 700; letter-spacing: 0.26em; color: rgba(210, 240, 235, 0.85);
+        text-transform: uppercase; display: flex; align-items: center; gap: 6px;
+      }
+      #oxygen-pct-val {
+        font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; color: #7ce3d0;
+      }
+      #oxygen-bar {
+        width: 170px; height: 6px; border-radius: 3px;
+        background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15);
+        overflow: hidden; position: relative;
+      }
+      #oxygen-fill {
+        height: 100%; width: 100%;
+        background: linear-gradient(90deg, #3bf0d0, #7ce3d0);
+        box-shadow: 0 0 10px #7ce3d0; transition: width 100ms linear, background 300ms ease;
+      }
+      #oxygen-fill.low {
+        background: linear-gradient(90deg, #ff416c, #ff4b2b);
+        box-shadow: 0 0 12px #ff4b2b;
+      }
+      #minimap-canvas {
+        position: fixed; top: 68px; right: 18px; z-index: 45;
+        border: 1px solid rgba(124, 227, 208, 0.35); background: rgba(4, 16, 18, 0.72);
+        border-radius: 8px; display: none;
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 16px 45px rgba(0, 0, 0, 0.65), 0 0 25px rgba(124, 227, 208, 0.15);
+      }
+      #minimap-canvas.visible { display: block; }
+      #pause-overlay {
+        position: fixed; inset: 0; z-index: 90;
+        display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 50% 50%, rgba(12, 38, 40, 0.5), rgba(2, 6, 8, 0.82) 80%);
+        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        transition: opacity 250ms ease, visibility 250ms ease;
+        font-family: 'Inter', sans-serif; color: rgba(245, 249, 247, 0.95);
+      }
+      #pause-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+      .pause-card {
+        position: relative; text-align: center; min-width: 380px; padding: 34px 44px 30px;
+        border: 1px solid rgba(124, 227, 208, 0.3); background: rgba(5, 18, 20, 0.82);
+        border-radius: 10px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 40px rgba(124, 227, 208, 0.1);
+        backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      }
+      .pause-title {
+        font-size: 16px; font-weight: 800; letter-spacing: 0.35em; margin-bottom: 8px;
+        color: #7ce3d0; text-transform: uppercase; text-shadow: 0 0 16px rgba(124, 227, 208, 0.5);
+      }
+      .pause-sub { font-size: 12px; opacity: 0.75; letter-spacing: 0.08em; }
+      .pause-mp-info {
+        margin-top: 14px; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+        color: var(--accent-yellow); letter-spacing: 0.08em;
+      }
+      #graphics-widget {
+        position: absolute; top: 24px; left: 24px; z-index: 120;
+        font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+        user-select: none; -webkit-user-select: none;
+        display: flex; flex-direction: column; align-items: flex-start; pointer-events: auto;
+      }
+      #graphics-btn {
+        appearance: none; outline: none; cursor: pointer; display: inline-flex; align-items: center; gap: 10px;
+        padding: 10px 18px; background: rgba(5, 18, 20, 0.82); border: 1px solid rgba(124, 227, 208, 0.35);
+        border-radius: 6px; color: rgba(245, 249, 247, 0.96); font-family: inherit; font-size: 12px; font-weight: 600;
+        letter-spacing: 0.16em; text-transform: uppercase;
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 0 15px rgba(124, 227, 208, 0.05);
+        transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #graphics-btn:hover {
+        background: rgba(12, 32, 34, 0.92); border-color: rgba(124, 227, 208, 0.75);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 20px rgba(124, 227, 208, 0.25);
+        transform: translateY(-1px);
+      }
+      #graphics-btn:active { transform: translateY(0); }
+      .graphics-icon { width: 15px; height: 15px; color: #7ce3d0; flex-shrink: 0; display: block; }
+      .graphics-btn-text { font-weight: 700; letter-spacing: 0.18em; }
+      .graphics-badge {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.12em; padding: 3px 8px; border-radius: 3px;
+        background: rgba(124, 227, 208, 0.16); color: #7ce3d0; border: 1px solid rgba(124, 227, 208, 0.3);
+        text-transform: uppercase; transition: all 200ms ease;
+      }
+      .graphics-chevron { width: 12px; height: 12px; opacity: 0.7; transition: transform 220ms ease; }
+      #graphics-widget.open .graphics-chevron,
+      #graphics-widget:hover .graphics-chevron { transform: rotate(180deg); }
+      #graphics-dropdown {
+        margin-top: 8px; min-width: 250px; background: rgba(5, 18, 20, 0.9);
+        border: 1px solid rgba(230, 245, 239, 0.22); border-radius: 6px; padding: 12px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), inset 0 0 25px rgba(124, 227, 208, 0.04);
+        backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+        opacity: 0; visibility: hidden; transform: translateY(-8px) scale(0.98); pointer-events: none;
+        transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1), transform 220ms cubic-bezier(0.16, 1, 0.3, 1), visibility 220ms ease;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      #graphics-widget.open #graphics-dropdown,
+      #graphics-widget:hover #graphics-dropdown {
+        opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto;
+      }
+      .graphics-dropdown-header {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.22em; color: #7ce3d0; opacity: 0.8;
+        padding: 4px 6px 8px; border-bottom: 1px solid rgba(230, 245, 239, 0.12);
+        text-transform: uppercase; display: flex; justify-content: space-between; align-items: center;
+      }
+      .graphics-options { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+      .graphics-option {
+        appearance: none; outline: none; cursor: pointer; width: 100%;
+        border: 1px solid rgba(230, 245, 239, 0.12); background: rgba(255, 255, 255, 0.03);
+        padding: 10px 12px; border-radius: 4px; display: flex; align-items: center;
+        justify-content: space-between; color: rgba(245, 249, 247, 0.88);
+        font-family: inherit; transition: all 160ms ease; text-align: left;
+      }
+      .graphics-option:hover {
+        background: rgba(124, 227, 208, 0.10); border-color: rgba(124, 227, 208, 0.40);
+        color: #fff; transform: translateX(2px);
+      }
+      .graphics-option.active {
+        background: rgba(124, 227, 208, 0.16); border-color: #7ce3d0; color: #fff;
+        box-shadow: 0 0 16px rgba(124, 227, 208, 0.2), inset 0 0 10px rgba(124, 227, 208, 0.08);
+      }
+      .opt-main { display: flex; flex-direction: column; gap: 2px; }
+      .opt-name {
+        font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+        display: flex; align-items: center; gap: 6px;
+      }
+      .opt-desc { font-size: 10px; color: rgba(220, 235, 230, 0.65); letter-spacing: 0.02em; }
+      .graphics-option.active .opt-desc { color: rgba(220, 245, 238, 0.85); }
+      .opt-res {
+        font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 10px; font-weight: 700;
+        padding: 3px 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.06);
+        color: rgba(220, 235, 230, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); letter-spacing: 0.05em;
+      }
+      .graphics-option.active .opt-res {
+        background: rgba(124, 227, 208, 0.25); color: #7ce3d0; border-color: rgba(124, 227, 208, 0.45);
+      }
+      .res-low { color: #ff8a8a !important; }
+      .graphics-option.active .res-low {
+        background: rgba(255, 100, 100, 0.2) !important; border-color: rgba(255, 100, 100, 0.5) !important;
+        color: #ff9999 !important;
+      }
+      canvas.pixelated {
+        image-rendering: -moz-crisp-edges; image-rendering: -webkit-crisp-edges;
+        image-rendering: pixelated; image-rendering: crisp-edges;
+      }
+      .pause-graphics-row {
+        margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(230, 245, 239, 0.15);
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+      }
+      .pause-graphics-label {
+        font-size: 10px; letter-spacing: 0.25em; font-weight: 700; color: #7ce3d0; opacity: 0.85;
+      }
+      .pause-graphics-btns { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+      .pause-preset-btn {
+        appearance: none; outline: none; cursor: pointer; padding: 6px 14px;
+        border-radius: 3px; border: 1px solid rgba(230, 245, 239, 0.25);
+        background: rgba(255, 255, 255, 0.06); color: rgba(245, 249, 247, 0.85);
+        font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+        text-transform: uppercase; transition: all 150ms ease;
+      }
+      .pause-preset-btn:hover {
+        background: rgba(124, 227, 208, 0.15); border-color: rgba(124, 227, 208, 0.5); color: #fff;
+      }
+      .pause-preset-btn.active {
+        background: rgba(124, 227, 208, 0.25); border-color: #7ce3d0; color: #7ce3d0;
+        box-shadow: 0 0 12px rgba(124, 227, 208, 0.25);
+      }
+
+      /* === MULTIPLAYER START MENU BUTTON & MODAL === */
+      #multiplayer-widget {
+        position: absolute; top: 24px; right: 24px; z-index: 120;
+        font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+        user-select: none; -webkit-user-select: none; pointer-events: auto;
+      }
+      #btn-play-multiplayer {
+        appearance: none; outline: none; cursor: pointer; display: inline-flex; align-items: center; gap: 10px;
+        padding: 10px 18px; background: rgba(5, 18, 20, 0.82); border: 1px solid rgba(124, 227, 208, 0.35);
+        border-radius: 6px; color: rgba(245, 249, 247, 0.96); font-family: inherit; font-size: 12px; font-weight: 600;
+        letter-spacing: 0.16em; text-transform: uppercase;
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 0 15px rgba(124, 227, 208, 0.05);
+        transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #btn-play-multiplayer:hover {
+        background: rgba(12, 32, 34, 0.92); border-color: rgba(255, 204, 0, 0.75);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 20px rgba(255, 204, 0, 0.3);
+        transform: translateY(-1px);
+      }
+      #btn-play-multiplayer:hover .mp-icon { color: #ffcc00; }
+      #btn-play-multiplayer:active { transform: translateY(0); }
+      .mp-icon { width: 16px; height: 16px; color: #7ce3d0; flex-shrink: 0; display: block; transition: color 180ms ease; }
+      .mp-btn-text { font-weight: 700; letter-spacing: 0.18em; }
+      .mp-badge {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.12em; padding: 3px 8px; border-radius: 3px;
+        background: rgba(255, 204, 0, 0.16); color: #ffcc00; border: 1px solid rgba(255, 204, 0, 0.3);
+        text-transform: uppercase; transition: all 200ms ease;
+      }
+
+      #multiplayer-modal {
+        position: fixed; inset: 0; z-index: 150;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(1, 8, 10, 0.75); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        transition: opacity 280ms ease, visibility 280ms ease;
+      }
+      #multiplayer-modal.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+      .mp-modal-card {
+        position: relative; width: min(490px, calc(100vw - 36px));
+        padding: 34px 34px 28px; border: 1px solid rgba(124, 227, 208, 0.35);
+        background: rgba(5, 18, 20, 0.90); border-radius: 10px;
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.8), 0 0 50px rgba(255, 204, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+        text-align: center; color: var(--text-main);
+      }
+      .mp-close-btn {
+        position: absolute; top: 16px; right: 18px; width: 30px; height: 30px;
+        background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 50%; color: rgba(255, 255, 255, 0.7); font-size: 18px;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+        transition: all 150ms ease; outline: none;
+      }
+      .mp-close-btn:hover {
+        background: rgba(255, 91, 91, 0.25); border-color: rgba(255, 91, 91, 0.6);
+        color: #ff5b5b; transform: scale(1.08);
+      }
+      .mp-modal-header { margin-bottom: 24px; }
+      .mp-kicker {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase;
+        color: #ffcc00; display: inline-flex; align-items: center; gap: 8px;
+        padding: 4px 14px; border-radius: 20px; margin-bottom: 10px;
+        background: rgba(255, 204, 0, 0.10); border: 1px solid rgba(255, 204, 0, 0.3);
+      }
+      .mp-title {
+        font-size: clamp(22px, 3.8vw, 30px); font-weight: 800; letter-spacing: 0.22em;
+        text-transform: uppercase; margin: 0 0 6px;
+        background: linear-gradient(135deg, #ffffff 0%, #fff4cc 40%, #ffcc00 80%, #ffffff 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        filter: drop-shadow(0 0 16px rgba(255, 204, 0, 0.3));
+      }
+      .mp-subtitle {
+        font-size: 10.5px; font-weight: 500; letter-spacing: 0.20em;
+        color: rgba(220, 240, 235, 0.6); text-transform: uppercase;
+      }
+      .mp-content-section {
+        background: rgba(3, 14, 16, 0.65); border: 1px solid rgba(124, 227, 208, 0.18);
+        border-radius: 8px; padding: 22px 20px 18px; margin-bottom: 22px;
+        display: flex; flex-direction: column; gap: 16px;
+      }
+      .mp-label {
+        font-size: 11px; font-weight: 700; letter-spacing: 0.20em; text-transform: uppercase;
+        color: rgba(230, 245, 240, 0.9); display: block; text-align: center; margin-bottom: 2px;
+      }
+      .mp-digit-container {
+        display: flex; justify-content: center; align-items: center; gap: 8px;
+      }
+      .mp-code-input {
+        width: min(280px, 85%); height: 56px; border-radius: 6px;
+        background: rgba(2, 8, 10, 0.85); border: 1.5px solid rgba(124, 227, 208, 0.4);
+        color: #ffcc00; font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 800;
+        letter-spacing: 0.38em; text-align: center; text-indent: 0.38em; outline: none;
+        box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.6), 0 0 18px rgba(124, 227, 208, 0.1);
+        transition: all 200ms ease;
+      }
+      .mp-code-input:focus {
+        border-color: #ffcc00; box-shadow: 0 0 24px rgba(255, 204, 0, 0.4), inset 0 2px 10px rgba(0,0,0,0.7);
+      }
+      .mp-code-input::placeholder {
+        color: rgba(124, 227, 208, 0.25); letter-spacing: 0.38em; text-indent: 0.38em;
+      }
+      .mp-code-actions {
+        display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap;
+      }
+      .mp-action-btn {
+        appearance: none; outline: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+        padding: 11px 22px; font-family: inherit; font-size: 11.5px; font-weight: 800;
+        letter-spacing: 0.20em; text-transform: uppercase; border-radius: 5px;
+        transition: all 180ms ease;
+      }
+      .mp-action-btn.primary {
+        background: linear-gradient(135deg, rgba(124, 227, 208, 0.25) 0%, rgba(20, 70, 72, 0.5) 100%);
+        border: 1px solid #7ce3d0; color: #ffffff;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(124, 227, 208, 0.25);
+      }
+      .mp-action-btn.primary:hover {
+        background: linear-gradient(135deg, rgba(124, 227, 208, 0.4) 0%, rgba(30, 95, 95, 0.7) 100%);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 25px rgba(124, 227, 208, 0.45);
+        transform: translateY(-1px);
+      }
+      .mp-action-btn.secondary {
+        background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2);
+        color: rgba(230, 245, 240, 0.85);
+      }
+      .mp-action-btn.secondary:hover {
+        background: rgba(255, 204, 0, 0.15); border-color: #ffcc00; color: #ffcc00;
+      }
+      .mp-status-msg {
+        font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6;
+        color: rgba(220, 240, 235, 0.8); min-height: 20px;
+      }
+      .mp-modal-footer {
+        display: flex; align-items: center; justify-content: space-between; gap: 14px;
+        padding-top: 14px; border-top: 1px solid rgba(124, 227, 208, 0.15);
+      }
+      .mp-footer-left {
+        text-align: left; font-size: 10.5px; font-family: 'JetBrains Mono', monospace;
+        color: rgba(200, 230, 225, 0.7); display: flex; align-items: center; gap: 8px;
+      }
+      .network-dot {
+        width: 6px; height: 6px; border-radius: 50%; background: #57e0c4; box-shadow: 0 0 6px #57e0c4;
+      }
+      .network-dot.connecting { background: #ffaa44; box-shadow: 0 0 6px #ffaa44; }
+      .network-dot.connected { background: #ffcc00; box-shadow: 0 0 8px #ffcc00; }
+      .mp-footer-right {
+        display: flex; align-items: center;
+      }
+      .mp-create-btn {
+        appearance: none; outline: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+        padding: 11px 22px; font-family: inherit; font-size: 11.5px; font-weight: 800;
+        letter-spacing: 0.20em; text-transform: uppercase; border-radius: 5px;
+        background: linear-gradient(135deg, rgba(255, 204, 0, 0.22) 0%, rgba(90, 70, 0, 0.45) 100%);
+        border: 1px solid rgba(255, 204, 0, 0.6); color: #fff;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 204, 0, 0.25);
+        transition: all 180ms ease;
+      }
+      .mp-create-btn:hover {
+        background: linear-gradient(135deg, rgba(255, 204, 0, 0.38) 0%, rgba(130, 100, 5, 0.6) 100%);
+        border-color: #ffcc00; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 28px rgba(255, 204, 0, 0.5);
+        transform: translateY(-2px);
+      }
+      .mp-create-btn:active { transform: translateY(0); }
+
+      /* === MULTIPLAYER IN-GAME CHAT UI === */
+      #in-game-chat-btn {
+        position: fixed; top: 18px; right: 18px; z-index: 80;
+        appearance: none; outline: none; cursor: pointer;
+        display: none;
+        align-items: center; gap: 8px; padding: 9px 18px;
+        background: rgba(5, 18, 20, 0.88); border: 1.5px solid rgba(124, 227, 208, 0.4);
+        border-radius: 6px; color: rgba(245, 249, 247, 0.96);
+        font-family: 'Inter', sans-serif; font-size: 11.5px; font-weight: 700;
+        letter-spacing: 0.16em; text-transform: uppercase;
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 20px rgba(124, 227, 208, 0.15);
+        transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #in-game-chat-btn:hover {
+        background: rgba(12, 36, 38, 0.95); border-color: #ffcc00;
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.65), 0 0 24px rgba(255, 204, 0, 0.4);
+        transform: translateY(-1px);
+      }
+      #in-game-chat-btn:active { transform: translateY(0); }
+      .chat-btn-icon { width: 15px; height: 15px; color: #7ce3d0; transition: color 180ms ease; }
+      #in-game-chat-btn:hover .chat-btn-icon { color: #ffcc00; }
+      .chat-unread-badge {
+        display: none; align-items: center; justify-content: center;
+        min-width: 17px; height: 17px; padding: 0 4px; border-radius: 10px;
+        background: #ffcc00; color: #051214; font-family: 'JetBrains Mono', monospace;
+        font-size: 10px; font-weight: 800; line-height: 1; box-shadow: 0 0 8px #ffcc00;
+        animation: unread-bounce 1s infinite alternate ease-in-out;
+      }
+      @keyframes unread-bounce {
+        from { transform: scale(1); }
+        to { transform: scale(1.15); }
+      }
+
+      /* In-game Chat Panel Overlay */
+      #chat-panel {
+        position: fixed; top: 64px; right: 18px; width: min(360px, calc(100vw - 36px));
+        height: 380px; z-index: 85; display: flex; flex-direction: column;
+        background: rgba(4, 16, 18, 0.92); border: 1px solid rgba(124, 227, 208, 0.35);
+        border-radius: 8px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 30px rgba(124, 227, 208, 0.12);
+        transition: opacity 200ms ease, transform 200ms ease, visibility 200ms ease;
+      }
+      #chat-panel.hidden {
+        opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-8px) scale(0.98);
+      }
+      .chat-panel-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 14px; border-bottom: 1px solid rgba(124, 227, 208, 0.18);
+        background: rgba(3, 10, 12, 0.4);
+      }
+      .chat-panel-title {
+        font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+        color: #7ce3d0; display: flex; align-items: center; gap: 8px;
+      }
+      .chat-close-btn {
+        appearance: none; outline: none; border: none; background: transparent;
+        color: rgba(255, 255, 255, 0.6); font-size: 18px; cursor: pointer;
+        line-height: 1; padding: 2px 6px; border-radius: 4px; transition: color 150ms ease;
+      }
+      .chat-close-btn:hover { color: #ff5b5b; }
+      #chat-messages-container {
+        flex: 1; overflow-y: auto; padding: 12px 14px; display: flex;
+        flex-direction: column; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+      }
+      #chat-messages-container::-webkit-scrollbar { width: 4px; }
+      #chat-messages-container::-webkit-scrollbar-thumb {
+        background: rgba(124, 227, 208, 0.25); border-radius: 2px;
+      }
+      .chat-entry {
+        line-height: 1.45; word-break: break-word; animation: chat-fade 150ms ease-out;
+      }
+      @keyframes chat-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+      .chat-author { font-weight: 700; color: #ffcc00; margin-right: 6px; }
+      .chat-author.self { color: #7ce3d0; }
+      .chat-time { font-size: 9px; opacity: 0.45; margin-right: 6px; }
+      .chat-text { color: rgba(245, 249, 247, 0.95); }
+      .chat-entry.system { color: #57e0c4; font-size: 10px; opacity: 0.8; font-style: italic; }
+      .chat-input-row {
+        display: flex; gap: 8px; padding: 10px 12px;
+        border-top: 1px solid rgba(124, 227, 208, 0.16); background: rgba(3, 10, 12, 0.6);
+      }
+      #chat-input {
+        flex: 1; height: 36px; box-sizing: border-box; border-radius: 4px;
+        background: rgba(2, 6, 8, 0.85); border: 1px solid rgba(124, 227, 208, 0.35);
+        color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+        padding: 0 10px; outline: none; transition: border-color 150ms ease;
+      }
+      #chat-input:focus { border-color: #ffcc00; }
+      #chat-send-btn {
+        appearance: none; outline: none; border: 1px solid #7ce3d0;
+        background: rgba(124, 227, 208, 0.2); color: #7ce3d0; padding: 0 14px;
+        border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 11px;
+        font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+        transition: all 150ms ease; display: inline-flex; align-items: center; justify-content: center;
+      }
+      #chat-send-btn:hover {
+        background: #7ce3d0; color: #041012; box-shadow: 0 0 12px rgba(124, 227, 208, 0.5);
+      }
+
+      /* Floating chat toast when closed */
+      #chat-toast-preview {
+        position: fixed; top: 64px; right: 18px; z-index: 79;
+        max-width: 320px; padding: 8px 14px; border-radius: 6px;
+        background: rgba(4, 16, 18, 0.85); border: 1px solid rgba(255, 204, 0, 0.6);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.65), 0 0 15px rgba(255, 204, 0, 0.2);
+        font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #ffffff;
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        opacity: 0; transform: translateY(-6px); pointer-events: none;
+        transition: opacity 250ms ease, transform 250ms ease;
+      }
+      #chat-toast-preview.show { opacity: 1; transform: translateY(0); }
+
+      /* Remote player 3D screen tags */
+      #remote-tags-layer {
+        position: fixed; inset: 0; pointer-events: none; z-index: 42; overflow: hidden;
+      }
+      .remote-player-tag {
+        position: absolute; display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 10px; border-radius: 4px;
+        background: rgba(5, 18, 20, 0.85); border: 1px solid rgba(255, 204, 0, 0.65);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.65), 0 0 12px rgba(255, 204, 0, 0.35);
+        font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700;
+        color: #ffdd44; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        pointer-events: none; transition: opacity 120ms ease; will-change: transform;
+      }
+      .tag-beacon {
+        width: 6px; height: 6px; border-radius: 50%; background: #ffcc00; box-shadow: 0 0 8px #ffcc00;
+        animation: beacon-pulse 1.6s infinite ease-in-out;
+      }
+      .tag-dist {
+        font-size: 9px; opacity: 0.75; color: #e0f0ec; margin-left: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="error-msg">WebGPU is not supported in this browser or frame.</div>
+    <canvas id="webgpu-canvas"></canvas>
+    <div id="crosshair"></div>
+    <div id="vignette"></div>
+    <div id="remote-tags-layer"></div>
+
+    <!-- USERNAME GATE MODAL (SHOWN BEFORE ENTERING THE SITE) -->
+    <div id="username-gate-modal">
+      <div class="username-card">
+        <div class="gate-kicker">
+          <span class="kicker-beacon" style="background:#ffcc00;box-shadow:0 0 8px #ffcc00;"></span>LEVEL 37 IDENTITY
+        </div>
+        <div class="gate-title">SET USERNAME</div>
+        <div class="gate-subtitle">Enter operative callsign to chat and explore</div>
+        <div class="gate-input-wrap">
+          <label for="username-gate-input" class="gate-label">OPERATIVE CALLSIGN</label>
+          <input
+            type="text"
+            id="username-gate-input"
+            class="gate-input"
+            maxlength="16"
+            placeholder="e.g. WANDERER_01"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <button id="btn-set-username" type="button" class="gate-btn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <polyline points="10 17 15 12 10 7" />
+            <line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+          <span>CONFIRM USERNAME</span>
+        </button>
+        <div id="gate-feedback" class="gate-feedback">Choose 2 to 16 characters for multiplayer recognition.</div>
+      </div>
+    </div>
+
+    <!-- HUD Telemetry -->
+    <div id="hud">
+      <div class="hud-stat-line">
+        <span class="hud-dot" id="hud-dot-fps"></span>
+        <div id="hud-fps">FPS: --</div>
+      </div>
+      <div class="hud-stat-line">
+        <span class="hud-dot"></span>
+        <div id="hud-graphics">Graphics: ULTRA</div>
+      </div>
+      <div class="hud-stat-line">
+        <span class="hud-dot"></span>
+        <div id="hud-biome">Biome: --</div>
+      </div>
+      <div class="hud-stat-line">
+        <span class="hud-dot"></span>
+        <div id="hud-pos">Pos: --</div>
+      </div>
+      <div class="hud-stat-line" id="hud-mp-row" style="display:none;">
+        <span class="hud-dot yellow"></span>
+        <div id="hud-mp-val">Room: Offline</div>
+      </div>
+      <div id="hud-compass">
+        <span id="hud-compass-val">HEADING: N 000°</span>
+      </div>
+      <div id="hud-hint">
+        Press <strong>I</strong> to toggle info &middot; <strong>M</strong> for map
+      </div>
+    </div>
+
+    <!-- Underwater Breathing Gauge -->
+    <div id="oxygen-wrap">
+      <div class="oxygen-header">
+        <div id="oxygen-label">BREATH</div>
+        <span id="oxygen-pct-val">100%</span>
+      </div>
+      <div id="oxygen-bar"><div id="oxygen-fill"></div></div>
+    </div>
+
+    <!-- Minimap -->
+    <canvas id="minimap-canvas" width="180" height="180"></canvas>
+
+    <!-- IN-GAME CHAT BUTTON (ONLY IN MULTIPLAYER) AT TOP RIGHT CORNER -->
+    <button id="in-game-chat-btn" type="button" aria-haspopup="dialog" aria-expanded="false">
+      <svg class="chat-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+      </svg>
+      <span>Chat</span>
+      <span id="chat-unread-badge" class="chat-unread-badge">0</span>
+    </button>
+
+    <!-- Floating Chat Notification Toast -->
+    <div id="chat-toast-preview"></div>
+
+    <!-- In-Game Multiplayer Chat Panel -->
+    <div id="chat-panel" class="hidden">
+      <div class="chat-panel-header">
+        <div class="chat-panel-title">
+          <span class="kicker-beacon" style="background:#ffcc00;box-shadow:0 0 8px #ffcc00;"></span>
+          <span id="chat-room-title">MULTIPLAYER CHAT</span>
+        </div>
+        <button id="chat-close-btn" class="chat-close-btn" type="button" title="Close Chat">&times;</button>
+      </div>
+      <div id="chat-messages-container"></div>
+      <div class="chat-input-row">
+        <input
+          type="text"
+          id="chat-input"
+          placeholder="Send radio message... (Enter)"
+          maxlength="140"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="chat-send-btn" type="button">SEND</button>
+      </div>
+    </div>
+
+    <!-- Pause Overlay -->
+    <div id="pause-overlay" class="hidden">
+      <div class="pause-card">
+        <div class="pause-title">PAUSED</div>
+        <div class="pause-sub">Click anywhere to resume</div>
+        <div id="pause-mp-details" class="pause-mp-info" style="display:none;"></div>
+        <div class="pause-graphics-row">
+          <div class="pause-graphics-label">GRAPHICS PRESET</div>
+          <div class="pause-graphics-btns">
+            <button type="button" class="pause-preset-btn" data-preset="low">Low</button>
+            <button type="button" class="pause-preset-btn" data-preset="medium">Medium</button>
+            <button type="button" class="pause-preset-btn" data-preset="high">High</button>
+            <button type="button" class="pause-preset-btn active" data-preset="ultra">Ultra</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start Menu Screen -->
+    <div id="poolrooms-start-menu">
+      <div id="graphics-widget" class="graphics-widget">
+        <button id="graphics-btn" type="button" class="graphics-trigger-btn" aria-haspopup="true" aria-expanded="false">
+          <svg class="graphics-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span class="graphics-btn-text">Graphics</span>
+          <span id="graphics-badge" class="graphics-badge">Ultra</span>
+          <svg class="graphics-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <div id="graphics-dropdown" class="graphics-dropdown">
+          <div class="graphics-dropdown-header">
+            <span>RENDER RESOLUTION</span>
+          </div>
+          <div class="graphics-options">
+            <button type="button" class="graphics-option" id="graphics-low" data-preset="low">
+              <div class="opt-main">
+                <div class="opt-name">Low</div>
+                <div class="opt-desc">Very low &middot; Trash / Potato</div>
+              </div>
+              <div class="opt-res res-low">~144p</div>
+            </button>
+            <button type="button" class="graphics-option" id="graphics-medium" data-preset="medium">
+              <div class="opt-main">
+                <div class="opt-name">Medium</div>
+                <div class="opt-desc">Kinda good &middot; Balanced</div>
+              </div>
+              <div class="opt-res res-med">480p</div>
+            </button>
+            <button type="button" class="graphics-option" id="graphics-high" data-preset="high">
+              <div class="opt-main">
+                <div class="opt-name">High</div>
+                <div class="opt-desc">Good quality &middot; Sharp</div>
+              </div>
+              <div class="opt-res res-high">720p</div>
+            </button>
+            <button type="button" class="graphics-option active" id="graphics-ultra" data-preset="ultra">
+              <div class="opt-main">
+                <div class="opt-name">Ultra</div>
+                <div class="opt-desc">Normal graphics &middot; Original</div>
+              </div>
+              <div class="opt-res res-ultra">Native</div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Right: Play Multiplayer Button (Start Menu) -->
+      <div id="multiplayer-widget">
+        <button id="btn-play-multiplayer" type="button" aria-haspopup="dialog">
+          <svg class="mp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <span class="mp-btn-text">Play multiplayer</span>
+          <span id="mp-top-badge" class="mp-badge">ONLINE</span>
+        </button>
+      </div>
+
+      <div class="poolrooms-menu-card">
+        <div class="poolrooms-menu-kicker">
+          <span class="kicker-beacon"></span>by subham
+        </div>
+        <div class="poolrooms-menu-name">POOLROOMS</div>
+        <div class="poolrooms-menu-subtitle">LEVEL 37 &middot; POOLROOMS</div>
+
+        <!-- Displays the confirmed username with an edit option -->
+        <div id="user-active-chip" class="user-active-chip" title="Click to change username">
+          <span>OPERATIVE:</span>
+          <strong id="active-username-display">UNKNOWN</strong>
+          <span style="opacity:0.6;font-size:10px;">(EDIT)</span>
+        </div>
+
+        <div class="controls-guide">
+          <div class="ctrl-row">
+            <div class="ctrl-keys">
+              <kbd class="keycap">W</kbd><kbd class="keycap">A</kbd
+              ><kbd class="keycap">S</kbd><kbd class="keycap">D</kbd>
+            </div>
+            <span class="ctrl-desc">Walk or Swim</span>
+          </div>
+          <div class="ctrl-row">
+            <div class="ctrl-keys">
+              <kbd class="keycap">SPACE</kbd><kbd class="keycap">SHIFT</kbd>
+            </div>
+            <span class="ctrl-desc">Up or go to Surface &middot; Down / Dive</span>
+          </div>
+          <div class="ctrl-row">
+            <div class="ctrl-keys">
+              <kbd class="keycap">MOUSE</kbd><kbd class="keycap">X</kbd>
+            </div>
+            <span class="ctrl-desc">Look Around &middot; Hold to Zoom</span>
+          </div>
+          <div class="ctrl-footer">
+            <span class="ctrl-hint-chip"><kbd class="keycap-sm">I</kbd> Telemetry</span>
+            <span class="ctrl-hint-chip"><kbd class="keycap-sm">M</kbd> Sonar Map</span>
+            <span class="ctrl-hint-chip"><kbd class="keycap-sm">T</kbd> Chat</span>
+            <span class="ctrl-version-badge">
+              <span class="kicker-beacon" style="width:4px;height:4px;background:#ffcc00;box-shadow:0 0 6px #ffcc00;"></span>multiplayer co-op active
+            </span>
+          </div>
+        </div>
+        <div class="sensitivity-row">
+          <div class="sensitivity-header">
+            <label for="sensitivity-slider" class="sensitivity-label">Mouse Sensitivity (how fast u want ur mouse to move)</label>
+            <span class="sensitivity-val" id="sensitivity-val">1.00x</span>
+          </div>
+          <input type="range" id="sensitivity-slider" min="0.3" max="2.5" step="0.05" value="1.0" />
+        </div>
+        <button id="poolrooms-start-button" type="button">
+          <svg class="btn-dive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"></circle>
+            <polyline points="12 8 12 12 15 15"></polyline>
+          </svg>
+          <span id="start-btn-text">go in there</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Multiplayer Modal Dialog -->
+    <div id="multiplayer-modal" class="hidden">
+      <div class="mp-modal-card">
+        <button id="mp-modal-close" class="mp-close-btn" type="button" title="Close">&times;</button>
+        <div class="mp-modal-header">
+          <div class="mp-kicker">
+            <span class="kicker-beacon" style="background:#ffcc00;box-shadow:0 0 8px #ffcc00;"></span>Cross-Device Co-Op
+          </div>
+          <div class="mp-title">Play Multiplayer</div>
+          <div class="mp-subtitle">Explore Level 37 Across Any Device & Network</div>
+        </div>
+
+        <div class="mp-content-section">
+          <label for="mp-code-input" class="mp-label">Enter 5-Digit Number Code</label>
+          <div class="mp-digit-container">
+            <input
+              type="text"
+              id="mp-code-input"
+              class="mp-code-input"
+              maxlength="5"
+              placeholder="_____"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="mp-code-actions">
+            <button id="btn-join-code" type="button" class="mp-action-btn primary">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                <polyline points="10 17 15 12 10 7" />
+                <line x1="15" y1="12" x2="3" y2="12" />
+              </svg>
+              <span>Join Game</span>
+            </button>
+            <button id="btn-copy-code" type="button" class="mp-action-btn secondary" style="display:none;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              <span id="copy-code-text">Copy Code</span>
+            </button>
+          </div>
+          <div id="mp-status-msg" class="mp-status-msg">
+            Enter a 5-digit number code to join a friend, or press 'create code' in the bottom right corner.
+          </div>
+        </div>
+
+        <div class="mp-modal-footer">
+          <div class="mp-footer-left">
+            <span class="network-dot" id="mp-status-dot"></span>
+            <span id="mp-network-status">Network: Ready (WebRTC + Cloud Relay)</span>
+          </div>
+          <div class="mp-footer-right">
+            <button id="btn-create-code" type="button" class="mp-create-btn">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>create code</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      class Vector3 {
+        constructor(x=0,y=0,z=0){ this.x=x; this.y=y; this.z=z; }
+        set(x,y,z){ this.x=x; this.y=y; this.z=z; return this; }
+        add(v){ this.x+=v.x; this.y+=v.y; this.z+=v.z; return this; }
+        sub(v){ this.x-=v.x; this.y-=v.y; this.z-=v.z; return this; }
+        multiplyScalar(s){ this.x*=s; this.y*=s; this.z*=s; return this; }
+        length(){ return Math.sqrt(this.x*this.x + this.y*this.y + this.z*this.z); }
+        normalize(){ const l=this.length(); if(l>0){ this.x/=l; this.y/=l; this.z/=l; } return this; }
+        clone(){ return new Vector3(this.x,this.y,this.z); }
+      }
+
+      function getTerrainHash(x, z, seed) {
+        let h = (Math.imul(x, 1619) + Math.imul(z, 31337) + Math.imul(seed, 1013)) | 0;
+        h = Math.imul(h ^ (h >>> 13), 0x85ebca6b | 0);
+        h = Math.imul(h ^ (h >>> 13), -1028477387);
+        h = h ^ (h >>> 16);
+        return (h >>> 0) / 4294967296.0;
+      }
+
+      function getTerrainHeight(x, z, seed) {
+        const spacing = 12.0;
+        const roomX = Math.round(x / spacing);
+        const roomZ = Math.round(z / spacing);
+        const roomHash = getTerrainHash(roomX, roomZ, seed);
+
+        if(roomHash < 0.25) return {floor: 0.0,   water:-100.0, biome:0};
+        if(roomHash < 0.55) return {floor:-0.35,  water:0.0,    biome:1};
+        if(roomHash < 0.85) return {floor:-3.20,  water:0.0,    biome:2};
+        return {floor:-8.00, water:0.0, biome:3};
+      }
+
+      const COL_OFFSETS = [ [5.0, 5.0], [5.0, -5.0], [-5.0, 5.0], [-5.0, -5.0] ];
+
+      class PlayerController {
+        constructor(seed){
+          this.seed=seed;
+          this.eyeHeight = 1.2;
+          this.radius = 0.33;
+          this.position = new Vector3(0.0, this.eyeHeight, 0.0);
+          this.velocity = new Vector3(0.0, 0.0, 0.0);
+          this.yaw=0.0; this.pitch=0.0;
+          this.movementSpeed=5.0; this.jumpStrength=7.2; this.gravity=-19.6;
+          this.isGrounded=false; this.isSubmerged=false;
+          this._inWater=false; this._camSubmerged=false;
+          this.oxygen=1.0; this.oxygenDrainSeconds=45.0; this.oxygenRecoverSeconds=2.0;
+          this.distanceMovedSinceStep=0; this.sensitivity=1.0;
+          this.keys={w:false,a:false,s:false,d:false,space:false,shift:false,x:false};
+          this.locked=false;
+          this.baseFovFactor=1.25; this.zoomFovFactor=3.6; this.currentFovFactor=1.25; this.zoomLerpSpeed=7.0;
+          this.initInputListeners();
+        }
+
+        initInputListeners(){
+          window.addEventListener('keydown',(e)=>{
+            const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+            if (targetTag === 'input' || targetTag === 'textarea') return;
+            const k=e.key.toLowerCase();
+            if(k==='w'||k==='a'||k==='s'||k==='d') this.keys[k]=true;
+            if(k==='x') this.keys.x=true;
+            if(e.code==='Space'){ this.keys.space=true; e.preventDefault(); }
+            if(e.code==='ShiftLeft' || e.code==='ShiftRight') this.keys.shift=true;
+          });
+          window.addEventListener('keyup',(e)=>{
+            const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+            if (targetTag === 'input' || targetTag === 'textarea') return;
+            const k=e.key.toLowerCase();
+            if(k==='w'||k==='a'||k==='s'||k==='d') this.keys[k]=false;
+            if(k==='x') this.keys.x=false;
+            if(e.code==='Space') this.keys.space=false;
+            if(e.code==='ShiftLeft' || e.code==='ShiftRight') this.keys.shift=false;
+          });
+          window.addEventListener('blur', ()=>{ this.keys.x=false; });
+          document.addEventListener('mousemove',(e)=>{
+            if(!this.locked) return;
+            const zoomSensMul = 1.0 - (this.currentFovFactor - this.baseFovFactor) / (this.zoomFovFactor - this.baseFovFactor) * 0.65;
+            const s=0.0022*this.sensitivity*zoomSensMul;
+            this.yaw += e.movementX*s;
+            this.pitch -= e.movementY*s;
+            const maxP=Math.PI/2-0.02;
+            if(this.pitch>maxP) this.pitch=maxP;
+            if(this.pitch<-maxP) this.pitch=-maxP;
+          });
+        }
+
+        getDirection(){
+          const cp = Math.cos(this.pitch);
+          return new Vector3(
+            Math.sin(this.yaw) * cp,
+            Math.sin(this.pitch),
+            -Math.cos(this.yaw) * cp
+          );
+        }
+
+        updateZoom(dt){
+          const target = this.keys.x ? this.zoomFovFactor : this.baseFovFactor;
+          const t = 1.0 - Math.exp(-this.zoomLerpSpeed * Math.max(dt, 0.0));
+          this.currentFovFactor += (target - this.currentFovFactor) * t;
+          if(Math.abs(this.currentFovFactor - target) < 0.0005) this.currentFovFactor = target;
+        }
+
+        _clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+        _circleVsAABBPush(minX,maxX,minZ,maxZ,r){
+          const cx=this._clamp(this.position.x,minX,maxX);
+          const cz=this._clamp(this.position.z,minZ,maxZ);
+          const dx=this.position.x-cx;
+          const dz=this.position.z-cz;
+          const ds=dx*dx+dz*dz;
+          const rs=r*r;
+          if(ds>=rs) return;
+          const dist=Math.sqrt(ds);
+          if(dist<1e-5){
+            this.position.x += r+0.15;
+            return;
+          }
+          const push=r-dist;
+          this.position.x += (dx/dist)*push;
+          this.position.z += (dz/dist)*push;
+        }
+
+        _resolveCollisions(){
+          const ceilingY=4.0; const headClear=0.18; const maxY=ceilingY-headClear;
+          if(this.position.y>maxY){
+            this.position.y=maxY;
+            if(this.velocity.y>0) this.velocity.y=0;
+          }
+
+          const spacing=12.0;
+          const baseCellX=Math.round(this.position.x/spacing);
+          const baseCellZ=Math.round(this.position.z/spacing);
+
+          for(let dz=-1; dz<=1; dz++){
+            for(let dx=-1; dx<=1; dx++){
+              const cellX=baseCellX+dx;
+              const cellZ=baseCellZ+dz;
+              const cx=cellX*spacing;
+              const cz=cellZ*spacing;
+              const terrCell=getTerrainHeight(cx,cz,this.seed);
+
+              if(terrCell.biome < 2.5){
+                const colHalf=0.8;
+                for(let ci=0; ci<4; ci++){
+                  const ox=COL_OFFSETS[ci][0], oz=COL_OFFSETS[ci][1];
+                  this._circleVsAABBPush(cx+ox-colHalf, cx+ox+colHalf, cz+oz-colHalf, cz+oz+colHalf, this.radius);
+                }
+                const halfRoom=6.0; const wallHalfThick=0.25; const doorHalf=1.8;
+                this._circleVsAABBPush(cx+(halfRoom-wallHalfThick), cx+(halfRoom+wallHalfThick), cz-halfRoom, cz-doorHalf, this.radius);
+                this._circleVsAABBPush(cx+(halfRoom-wallHalfThick), cx+(halfRoom+wallHalfThick), cz+doorHalf, cz+halfRoom, this.radius);
+                this._circleVsAABBPush(cx+(-halfRoom-wallHalfThick), cx+(-halfRoom+wallHalfThick), cz-halfRoom, cz-doorHalf, this.radius);
+                this._circleVsAABBPush(cx+(-halfRoom-wallHalfThick), cx+(-halfRoom+wallHalfThick), cz+doorHalf, cz+halfRoom, this.radius);
+
+                this._circleVsAABBPush(cx-halfRoom, cx-doorHalf, cz+(halfRoom-wallHalfThick), cz+(halfRoom+wallHalfThick), this.radius);
+                this._circleVsAABBPush(cx+doorHalf, cx+halfRoom, cz+(halfRoom-wallHalfThick), cz+(halfRoom+wallHalfThick), this.radius);
+                this._circleVsAABBPush(cx-halfRoom, cx-doorHalf, cz+(-halfRoom-wallHalfThick), cz+(-halfRoom+wallHalfThick), this.radius);
+                this._circleVsAABBPush(cx+doorHalf, cx+halfRoom, cz+(-halfRoom-wallHalfThick), cz+(-halfRoom+wallHalfThick), this.radius);
+              }
+            }
+          }
+
+          const terr = getTerrainHeight(this.position.x, this.position.z, this.seed);
+          const ground = terr.floor + this.eyeHeight;
+          if(this.position.y <= ground + 0.0005){
+            this.position.y = ground;
+            if(this.velocity.y < 0) this.velocity.y = 0;
+            this.isGrounded = true;
+          } else {
+            this.isGrounded = false;
+          }
+
+          const waterExists = terr.water > -50.0;
+          const feetY = this.position.y - this.eyeHeight;
+          this._inWater = waterExists && (feetY <= terr.water + (this._inWater ? 0.18 : 0.02));
+          this._camSubmerged = waterExists && (this.position.y < terr.water + (this._camSubmerged ? 0.08 : -0.08));
+          this.isSubmerged = this._camSubmerged;
+        }
+
+        update(dt){
+          if(!this.locked) return;
+          const clampedDt=Math.min(dt, 0.05);
+          const steps=Math.max(1, Math.ceil(clampedDt / (1/120)));
+          const stepDt=clampedDt / steps;
+
+          const sinY = Math.sin(this.yaw);
+          const cosY = Math.cos(this.yaw);
+
+          for(let step=0; step<steps; step++){
+            let moveX = 0, moveZ = 0;
+            if(this.keys.w){ moveX += sinY; moveZ -= cosY; }
+            if(this.keys.s){ moveX -= sinY; moveZ += cosY; }
+            if(this.keys.d){ moveX += cosY; moveZ += sinY; }
+            if(this.keys.a){ moveX -= cosY; moveZ -= sinY; }
+            const mLenSq = moveX*moveX + moveZ*moveZ;
+            if(mLenSq > 0){
+              const invLen = 1.0 / Math.sqrt(mLenSq);
+              moveX *= invLen;
+              moveZ *= invLen;
+            }
+
+            const prevX=this.position.x, prevZ=this.position.z;
+            const terrBefore=getTerrainHeight(this.position.x,this.position.z,this.seed);
+            const deepWater = this._inWater && (terrBefore.water - terrBefore.floor) > 1.0;
+
+            const speed = deepWater ? (this.movementSpeed * 0.72) : (this.movementSpeed * (this._inWater ? 0.85 : 1.0));
+            this.position.x += moveX * speed * stepDt;
+            this.position.z += moveZ * speed * stepDt;
+
+            const dxMoved=this.position.x-prevX, dzMoved=this.position.z-prevZ;
+            this.distanceMovedSinceStep += Math.sqrt(dxMoved*dxMoved+dzMoved*dzMoved);
+
+            const terr = getTerrainHeight(this.position.x,this.position.z,this.seed);
+            const deepWaterNow = this._inWater && (terr.water > -50.0) && ((terr.water - terr.floor) > 1.0);
+
+            if (deepWaterNow) {
+              this.velocity.y = Math.max(this.velocity.y, -6.0) * 0.90;
+              const targetEyeY = terr.water + 0.85;
+              const buoyAcc = (targetEyeY - this.position.y) * 7.0;
+              const controlAcc = (this.keys.space ? 10.5 : 0.0) + (this.keys.shift ? -10.5 : 0.0);
+              const waterGravity = this.gravity * 0.10;
+              const lowOxygenAssist = (this.oxygen <= 0.0) ? 4.5 : 0.0;
+              this.velocity.y += (buoyAcc + controlAcc + waterGravity + lowOxygenAssist) * stepDt;
+              this.velocity.y = Math.max(-3.5, Math.min(3.5, this.velocity.y));
+              this.position.y += this.velocity.y * stepDt;
+            } else {
+              if(this.keys.space && this.isGrounded){
+                this.velocity.y = this.jumpStrength;
+                this.isGrounded = false;
+                this.position.y += 0.001;
+              }
+              this.velocity.y += this.gravity*stepDt;
+              this.position.y += this.velocity.y*stepDt;
+            }
+            this._resolveCollisions();
+          }
+
+          if (this.position.y < -40.0) {
+            const terrSafe = getTerrainHeight(this.position.x, this.position.z, this.seed);
+            this.position.y = terrSafe.floor + this.eyeHeight + 0.05;
+            this.velocity.y = 0;
+          }
+        }
+
+        updateOxygen(dt){
+          if (this.isSubmerged) this.oxygen = Math.max(0, this.oxygen - dt / this.oxygenDrainSeconds);
+          else this.oxygen = Math.min(1, this.oxygen + dt / this.oxygenRecoverSeconds);
+        }
+      }
+
+      class AudioManager{
+        constructor(){ this.ready=false; }
+        init(){
+          if (this.ready) return;
+          try{
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return;
+            this.ctx = new AC();
+            this.master = this.ctx.createGain(); this.master.gain.value = 0.35;
+            this.master.connect(this.ctx.destination);
+
+            const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate*0.5, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for(let i=0;i<data.length;i++){ data[i] = (Math.random()*2-1); }
+            this.noiseBuffer = buffer;
+
+            this.ambientFilter = this.ctx.createBiquadFilter();
+            this.ambientFilter.type = 'lowpass'; this.ambientFilter.frequency.value = 1200;
+            this.ambientFilter.connect(this.master);
+
+            const ambientGain = this.ctx.createGain(); ambientGain.gain.value = 0.10;
+            ambientGain.connect(this.ambientFilter);
+            const osc1 = this.ctx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.value = 55;
+            const osc2 = this.ctx.createOscillator(); osc2.type = 'triangle'; osc2.frequency.value = 82.5;
+            osc1.connect(ambientGain); osc2.connect(ambientGain);
+            osc1.start(); osc2.start();
+            this.ready = true;
+          } catch(err){ this.ready = false; }
+        }
+        resume(){ if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+        _playBurst(duration, volume, filterFreq, filterType){
+          if (!this.ready) return;
+          const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = filterType; filter.frequency.value = filterFreq;
+          const gain = this.ctx.createGain(); const now = this.ctx.currentTime;
+          gain.gain.setValueAtTime(volume, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+          src.connect(filter); filter.connect(gain); gain.connect(this.master);
+          src.start(now); src.stop(now + duration + 0.05);
+        }
+        playFootstep(){ this._playBurst(0.09, 0.18, 900, 'bandpass'); }
+        playSwimStroke(){ this._playBurst(0.28, 0.12, 500, 'lowpass'); }
+        playSplash(){ this._playBurst(0.35, 0.25, 1400, 'bandpass'); }
+        playUiHover(){
+          if(!this.ready || !this.ctx || this.ctx.state !== 'running') return;
+          try {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            const now = this.ctx.currentTime;
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1400, now);
+            gain.gain.setValueAtTime(0.018, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+            osc.connect(gain); gain.connect(this.master);
+            osc.start(now); osc.stop(now + 0.045);
+          } catch(e){}
+        }
+        playUiClick(){
+          if(!this.ready || !this.ctx || this.ctx.state !== 'running') return;
+          try {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            const now = this.ctx.currentTime;
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(880, now);
+            osc.frequency.exponentialRampToValueAtTime(320, now + 0.06);
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+            osc.connect(gain); gain.connect(this.master);
+            osc.start(now); osc.stop(now + 0.08);
+          } catch(e){}
+        }
+        playChatChime(){
+          if(!this.ready || !this.ctx || this.ctx.state !== 'running') return;
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(650, now);
+            osc.frequency.exponentialRampToValueAtTime(1050, now + 0.09);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+            osc.connect(gain); gain.connect(this.master);
+            osc.start(now); osc.stop(now + 0.18);
+          } catch(e){}
+        }
+        playUiStart(){
+          if(!this.ready || !this.ctx || this.ctx.state !== 'running') return;
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(180, now);
+            osc.frequency.exponentialRampToValueAtTime(36, now + 0.7);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+            osc.connect(gain); gain.connect(this.master);
+            osc.start(now); osc.stop(now + 0.85);
+          } catch(e){}
+        }
+        setUnderwater(isUnder){
+          if (!this.ready) return;
+          const now = this.ctx.currentTime;
+          this.ambientFilter.frequency.cancelScheduledValues(now);
+          this.ambientFilter.frequency.setTargetAtTime(isUnder ? 260 : 1200, now, 0.35);
+        }
+      }
+
+      // =======================================================
+      // CROSS-DEVICE MULTIPLAYER: WebRTC P2P + CLOUD RELAYS
+      // =======================================================
+      class NetworkManager {
+        constructor(options = {}) {
+          this.onStatus = options.onStatus || (() => {});
+          this.onSyncSeed = options.onSyncSeed || (() => {});
+          this.onPlayerCountChange = options.onPlayerCountChange || (() => {});
+          this.onChatMessage = options.onChatMessage || (() => {});
+          this.myId = 'hz_' + Math.random().toString(36).substring(2, 8);
+          this.username = options.username || 'OPERATIVE';
+          this.roomCode = null;
+          this.isHost = false;
+          this.connected = false;
+          this.remotePlayers = new Map();
+          this.lastSendTime = 0;
+          this.seq = 0;
+          this.seenMsgs = new Map();
+
+          // WebRTC PeerJS state
+          this.peer = null;
+          this.peerConns = new Map();
+          this.clientHostConn = null;
+
+          // MQTT fallback state
+          this.mqttClient = null;
+          this.bc = null;
+          this.brokers = [
+            'wss://broker.emqx.io:8084/mqtt',
+            'wss://broker.hivemq.com:8884/mqtt',
+            'wss://test.mosquitto.org:8081/mqtt'
+          ];
+          this.brokerIndex = 0;
+          this.joinInterval = null;
+          this.failoverTimer = null;
+          this.reconnectTimer = null;
+        }
+
+        setUsername(name) {
+          this.username = name || 'OPERATIVE';
+        }
+
+        ensurePeerJsLoaded(callback) {
+          if (window.Peer) { callback(); return; }
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js';
+          s.onload = () => { if (window.Peer) callback(); };
+          s.onerror = () => {
+            const s2 = document.createElement('script');
+            s2.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+            s2.onload = () => { if (window.Peer) callback(); };
+            document.head.appendChild(s2);
+          };
+          document.head.appendChild(s);
+        }
+
+        ensureMqttLoaded(callback) {
+          if (window.mqtt) { callback(); return; }
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js';
+          s.onload = () => { if (window.mqtt) callback(); };
+          s.onerror = () => {
+            const s2 = document.createElement('script');
+            s2.src = 'https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js';
+            s2.onload = () => { if (window.mqtt) callback(); };
+            document.head.appendChild(s2);
+          };
+          document.head.appendChild(s);
+        }
+
+        initBroadcastChannel(code) {
+          try {
+            if (this.bc) { try { this.bc.close(); } catch(e){} }
+            if (typeof BroadcastChannel !== 'undefined') {
+              this.bc = new BroadcastChannel('poolrooms_room_' + code);
+              this.bc.onmessage = (e) => {
+                if (e.data) this.handleMessage(e.data);
+              };
+            }
+          } catch(e) {}
+        }
+
+        initWebRTC(code, isHost) {
+          this.ensurePeerJsLoaded(() => {
+            try {
+              if (this.peer) {
+                try { this.peer.destroy(); } catch(e){}
+              }
+
+              const peerConfig = {
+                debug: 0,
+                config: {
+                  iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                  ]
+                }
+              };
+
+              const hostPeerId = 'poolrooms-lvl37-' + code;
+
+              if (isHost) {
+                this.peer = new window.Peer(hostPeerId, peerConfig);
+
+                this.peer.on('open', (id) => {
+                  this.connected = true;
+                  this.onStatus('connected', `Room #${code} Live (Host WebRTC)`);
+                });
+
+                this.peer.on('connection', (conn) => {
+                  conn.on('open', () => {
+                    this.peerConns.set(conn.peer, conn);
+                    conn.send({
+                      t: 'sync',
+                      id: this.myId,
+                      name: this.username,
+                      seed: window.currentLevelSeed,
+                      pos: window.currentPlayerPos
+                    });
+                  });
+
+                  conn.on('data', (data) => {
+                    this.handleMessage(data);
+                    // Star topology relay to all other connected peers
+                    for (const [pId, otherConn] of this.peerConns) {
+                      if (pId !== conn.peer && otherConn.open) {
+                        try { otherConn.send(data); } catch(e){}
+                      }
+                    }
+                  });
+
+                  conn.on('close', () => {
+                    this.peerConns.delete(conn.peer);
+                  });
+
+                  conn.on('error', () => {
+                    this.peerConns.delete(conn.peer);
+                  });
+                });
+
+                this.peer.on('error', (err) => {
+                  if (err.type === 'unavailable-id') {
+                    // Host ID already exists on peer server; connect as client peer instead
+                    this.peer.destroy();
+                    this.initWebRTC(code, false);
+                  }
+                });
+
+              } else {
+                // Client Peer connecting to Host
+                this.peer = new window.Peer(peerConfig);
+
+                const connectToHost = () => {
+                  if (!this.peer || this.peer.destroyed) return;
+                  const conn = this.peer.connect(hostPeerId, { reliable: true });
+                  this.clientHostConn = conn;
+
+                  conn.on('open', () => {
+                    this.connected = true;
+                    this.onStatus('connected', `Room #${code} Online (WebRTC P2P)`);
+                    conn.send({ t: 'join', id: this.myId, name: this.username, pos: window.currentPlayerPos });
+                  });
+
+                  conn.on('data', (data) => {
+                    this.handleMessage(data);
+                  });
+
+                  conn.on('close', () => {
+                    this.clientHostConn = null;
+                  });
+
+                  conn.on('error', () => {
+                    this.clientHostConn = null;
+                  });
+                };
+
+                this.peer.on('open', () => {
+                  connectToHost();
+                });
+
+                this.peer.on('error', (err) => {
+                  if (err.type === 'peer-unavailable') {
+                    this.onStatus('connecting', `Searching for Host on Room #${code}...`);
+                    if (!this.reconnectTimer) {
+                      this.reconnectTimer = setTimeout(() => {
+                        this.reconnectTimer = null;
+                        connectToHost();
+                      }, 2500);
+                    }
+                  }
+                });
+              }
+            } catch(e) {
+              console.warn('PeerJS init fallback:', e);
+            }
+          });
+        }
+
+        connectMqttFallback(code) {
+          this.initBroadcastChannel(code);
+
+          this.ensureMqttLoaded(() => {
+            if (!window.mqtt) return;
+
+            const brokerUrl = this.brokers[this.brokerIndex % this.brokers.length];
+            const clientId = 'pool_' + this.myId + '_' + Math.random().toString(36).substring(2, 6);
+
+            if (this.failoverTimer) clearTimeout(this.failoverTimer);
+            this.failoverTimer = setTimeout(() => {
+              if (!this.connected && this.brokerIndex < this.brokers.length * 2) {
+                this.brokerIndex++;
+                this.connectMqttFallback(code);
+              }
+            }, 4500);
+
+            try {
+              if (this.mqttClient) {
+                try { this.mqttClient.end(true); } catch(e){}
+              }
+              this.mqttClient = window.mqtt.connect(brokerUrl, {
+                clientId: clientId,
+                clean: true,
+                connectTimeout: 4000,
+                reconnectPeriod: 3000,
+              });
+
+              this.mqttClient.on('connect', () => {
+                if (this.failoverTimer) clearTimeout(this.failoverTimer);
+                this.connected = true;
+                const topic = `poolrooms/v3/${code}/#`;
+                this.mqttClient.subscribe(topic, { qos: 0 });
+                this.onStatus('connected', `Room #${code} Online`);
+                if (!this.isHost) {
+                  this.publish({ t: 'join', id: this.myId, name: this.username, pos: window.currentPlayerPos });
+                }
+              });
+
+              this.mqttClient.on('message', (topic, payload) => {
+                try {
+                  let str = (typeof payload === 'string') ? payload : (payload.toString ? payload.toString() : new TextDecoder().decode(payload));
+                  const data = JSON.parse(str);
+                  this.handleMessage(data);
+                } catch(e){}
+              });
+
+              this.mqttClient.on('error', () => {
+                if (!this.connected) {
+                  this.brokerIndex++;
+                  if (this.brokerIndex < this.brokers.length * 2) {
+                    setTimeout(() => this.connectMqttFallback(code), 600);
+                  }
+                }
+              });
+            } catch(e){}
+          });
+        }
+
+        publish(data) {
+          if (!this.roomCode) return;
+          data.time = Date.now();
+          if (!data.name) data.name = this.username;
+          if (data.seq === undefined) data.seq = this.seq++;
+
+          // 1. Direct WebRTC send
+          if (this.isHost) {
+            for (const [pId, conn] of this.peerConns) {
+              if (conn && conn.open) {
+                try { conn.send(data); } catch(e){}
+              }
+            }
+          } else if (this.clientHostConn && this.clientHostConn.open) {
+            try { this.clientHostConn.send(data); } catch(e){}
+          }
+
+          // 2. BroadcastChannel send (for same-browser multiple tabs)
+          if (this.bc) {
+            try { this.bc.postMessage(data); } catch(e){}
+          }
+
+          // 3. MQTT Relay send (for inter-network fallback)
+          if (this.mqttClient && this.mqttClient.connected) {
+            try {
+              const topic = `poolrooms/v3/${this.roomCode}/${data.t || 'p'}`;
+              this.mqttClient.publish(topic, JSON.stringify(data), { qos: 0 });
+            } catch(e){}
+          }
+        }
+
+        handleMessage(msg) {
+          if (!msg || msg.id === this.myId) return;
+
+          // Deduplicate across WebRTC, MQTT and BroadcastChannel
+          const msgKey = msg.id + '_' + (msg.seq !== undefined ? msg.seq : (msg.t + '_' + (msg.time || Math.random())));
+          if (this.seenMsgs.has(msgKey)) return;
+          this.seenMsgs.set(msgKey, performance.now());
+          if (this.seenMsgs.size > 300) {
+            const firstKey = this.seenMsgs.keys().next().value;
+            this.seenMsgs.delete(firstKey);
+          }
+
+          const now = performance.now();
+
+          if (msg.t === 'chat') {
+            this.onChatMessage({
+              id: msg.id,
+              name: msg.name || 'OPERATIVE',
+              text: msg.text || '',
+              time: msg.time || Date.now(),
+              isSelf: false
+            });
+          } else if (msg.t === 'join') {
+            if (this.isHost && window.currentLevelSeed !== undefined) {
+              this.publish({
+                t: 'sync',
+                id: this.myId,
+                name: this.username,
+                to: msg.id,
+                seed: window.currentLevelSeed,
+                pos: window.currentPlayerPos
+              });
+            }
+          } else if (msg.t === 'sync') {
+            if (!this.isHost && (msg.to === this.myId || !msg.to)) {
+              if (this.joinInterval) {
+                clearInterval(this.joinInterval);
+                this.joinInterval = null;
+              }
+              this.onSyncSeed(msg.seed, msg.pos);
+            }
+          } else if (msg.t === 'p') {
+            let rp = this.remotePlayers.get(msg.id);
+            if (!rp) {
+              rp = {
+                id: msg.id,
+                targetPos: { x: msg.x, y: msg.y, z: msg.z },
+                currentPos: { x: msg.x, y: msg.y, z: msg.z },
+                targetYaw: msg.yaw,
+                currentYaw: msg.yaw,
+                targetPitch: msg.pit,
+                currentPitch: msg.pit,
+                submerged: !!msg.sub,
+                walkPhase: msg.w || 0,
+                inWater: !!msg.inW,
+                lastRipplePos: { x: msg.x, z: msg.z },
+                lastSeen: now,
+                name: (msg.name || ('HAZMAT #' + msg.id.slice(-3).toUpperCase()))
+              };
+              this.remotePlayers.set(msg.id, rp);
+              this.onPlayerCountChange(this.remotePlayers.size + 1);
+            } else {
+              rp.targetPos.x = msg.x;
+              rp.targetPos.y = msg.y;
+              rp.targetPos.z = msg.z;
+              rp.targetYaw = msg.yaw;
+              rp.targetPitch = msg.pit;
+              rp.submerged = !!msg.sub;
+              rp.walkPhase = msg.w || 0;
+              rp.inWater = !!msg.inW;
+              rp.lastSeen = now;
+              if (msg.name) rp.name = msg.name;
+            }
+          } else if (msg.t === 'leave') {
+            if (this.remotePlayers.has(msg.id)) {
+              this.remotePlayers.delete(msg.id);
+              this.onPlayerCountChange(this.remotePlayers.size + 1);
+            }
+          }
+        }
+
+        hostRoom(code, seed, initialPos) {
+          this.roomCode = code;
+          this.isHost = true;
+          window.currentLevelSeed = seed;
+          window.currentPlayerPos = { x: initialPos.x, y: initialPos.y, z: initialPos.z };
+
+          this.initWebRTC(code, true);
+          this.connectMqttFallback(code);
+        }
+
+        joinRoom(code) {
+          this.roomCode = code;
+          this.isHost = false;
+
+          this.initWebRTC(code, false);
+          this.connectMqttFallback(code);
+
+          const sendJoin = () => {
+            if (this.roomCode === code) {
+              this.publish({ t: 'join', id: this.myId, name: this.username, pos: window.currentPlayerPos });
+            }
+          };
+          setTimeout(sendJoin, 300);
+          setTimeout(sendJoin, 1200);
+          if (this.joinInterval) clearInterval(this.joinInterval);
+          this.joinInterval = setInterval(sendJoin, 2200);
+        }
+
+        sendPosition(player) {
+          if (!this.roomCode) return;
+          const now = performance.now();
+          if (now - this.lastSendTime < 45) return;
+          this.lastSendTime = now;
+
+          if (this.isHost) {
+            window.currentPlayerPos = { x: player.position.x, y: player.position.y, z: player.position.z };
+          }
+
+          this.publish({
+            t: 'p',
+            id: this.myId,
+            name: this.username,
+            x: Math.round(player.position.x * 100) / 100,
+            y: Math.round(player.position.y * 100) / 100,
+            z: Math.round(player.position.z * 100) / 100,
+            yaw: Math.round(player.yaw * 1000) / 1000,
+            pit: Math.round(player.pitch * 1000) / 1000,
+            sub: player.isSubmerged ? 1 : 0,
+            w: Math.round(player.distanceMovedSinceStep * 100) / 100,
+            inW: player._inWater ? 1 : 0
+          });
+        }
+
+        sendChat(text) {
+          if (!this.roomCode || !text.trim()) return;
+          const clean = text.trim().slice(0, 140);
+          this.publish({
+            t: 'chat',
+            id: this.myId,
+            name: this.username,
+            text: clean
+          });
+          this.onChatMessage({
+            id: this.myId,
+            name: this.username,
+            text: clean,
+            time: Date.now(),
+            isSelf: true
+          });
+        }
+
+        updateInterpolation(dt, onSpawnRipple) {
+          const now = performance.now();
+          const lerpRate = 1.0 - Math.exp(-15.0 * Math.max(dt, 0.001));
+
+          for (const [id, rp] of this.remotePlayers) {
+            if (now - rp.lastSeen > 7000) {
+              this.remotePlayers.delete(id);
+              this.onPlayerCountChange(this.remotePlayers.size + 1);
+              continue;
+            }
+
+            rp.currentPos.x += (rp.targetPos.x - rp.currentPos.x) * lerpRate;
+            rp.currentPos.y += (rp.targetPos.y - rp.currentPos.y) * lerpRate;
+            rp.currentPos.z += (rp.targetPos.z - rp.currentPos.z) * lerpRate;
+
+            let dyaw = rp.targetYaw - rp.currentYaw;
+            while (dyaw > Math.PI) dyaw -= 2 * Math.PI;
+            while (dyaw < -Math.PI) dyaw += 2 * Math.PI;
+            rp.currentYaw += dyaw * lerpRate;
+            rp.currentPitch += (rp.targetPitch - rp.currentPitch) * lerpRate;
+
+            if (rp.inWater && onSpawnRipple && rp.lastRipplePos) {
+              const dx = rp.currentPos.x - rp.lastRipplePos.x;
+              const dz = rp.currentPos.z - rp.lastRipplePos.z;
+              const dist = Math.sqrt(dx * dx + dz * dz);
+              if (dist > 0.22) {
+                onSpawnRipple(rp.currentPos.x, rp.currentPos.z, Math.min(1.4, dist * 1.5 + 0.3));
+                rp.lastRipplePos.x = rp.currentPos.x;
+                rp.lastRipplePos.z = rp.currentPos.z;
+              }
+            } else if (rp.lastRipplePos) {
+              rp.lastRipplePos.x = rp.currentPos.x;
+              rp.lastRipplePos.z = rp.currentPos.z;
+            }
+          }
+        }
+      }
+
+      async function initWebGPU(){
+        const errMsg = document.getElementById('error-msg');
+        if(!navigator.gpu){
+          if(errMsg) {
+            errMsg.innerHTML = '<strong>WebGPU Not Supported:</strong> WebGPU is not available in this browser.<br>Please use Chrome or Edge 113+ on PC, Mac, or Android with WebGPU enabled.';
+            errMsg.style.display = 'block';
+          }
+          return;
+        }
+
+        let adapter = null;
+        try {
+          adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+        } catch(e) {}
+        if (!adapter) {
+          try { adapter = await navigator.gpu.requestAdapter(); } catch(e) {}
+        }
+
+        if(!adapter){
+          if(errMsg) {
+            errMsg.innerHTML = '<strong>WebGPU Device Unavailable:</strong> Could not acquire GPU device adapter.';
+            errMsg.style.display = 'block';
+          }
+          return;
+        }
+
+        let device = null;
+        try {
+          device = await adapter.requestDevice();
+        } catch(e) {
+          if(errMsg) {
+            errMsg.innerHTML = '<strong>WebGPU Device Error:</strong> ' + e.message;
+            errMsg.style.display = 'block';
+          }
+          return;
+        }
+
+        const canvas = document.getElementById('webgpu-canvas');
+        const context = canvas.getContext('webgpu');
+        const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+        context.configure({ device, format: presentationFormat, alphaMode: 'opaque' });
+
+        function seedFromRoomCode(codeStr) {
+          const codeNum = parseInt(codeStr, 10) || 12345;
+          return ((codeNum * 1619 + 31337) >>> 0) % 1000000;
+        }
+
+        let levelSeedInt = Math.floor(Math.random() * 1000000);
+        let startTime = performance.now();
+        let lastTime = startTime;
+        let fpsSmoothed = 60;
+        let rippleIdx = 0;
+        let lastRipplePos = { x: 0, z: 0 };
+        let wasInWater = false;
+        let lastOxygenPct = -1;
+        let lastHudUpdate = 0;
+
+        const player = new PlayerController(levelSeedInt);
+        window.currentLevelSeed = levelSeedInt;
+        window.currentPlayerPos = { x: player.position.x, y: player.position.y, z: player.position.z };
+
+        const shaderCode = `
+          struct RemotePlayer {
+            pos: vec4<f32>,
+            rot: vec4<f32>,
+          };
+
+          struct Uniforms {
+            rt: vec4<f32>,
+            cam: vec4<f32>,
+            dir: vec4<f32>,
+            ripples: array<vec4<f32>, 32>,
+            players: array<RemotePlayer, 8>,
+          };
+          @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+          struct VertexOutput {
+            @builtin(position) position: vec4<f32>,
+            @location(0) uv: vec2<f32>,
+          };
+
+          @vertex
+          fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+            var pos = array<vec2<f32>, 3>( vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0) );
+            var output: VertexOutput;
+            output.position = vec4<f32>(pos[vertexIndex], 0.0, 1.0);
+            output.uv = pos[vertexIndex] * 0.5 + 0.5;
+            return output;
+          }
+
+          fn hash21(p: vec2<f32>) -> f32 {
+            var q = fract(p * vec2<f32>(0.1031, 0.1030));
+            q += dot(q, q.yx + 33.33); return fract(q.x * q.y);
+          }
+
+          fn valueNoise3D(x: vec3<f32>) -> f32 {
+            let p = floor(x); let f = fract(x);
+            let u = f * f * (3.0 - 2.0 * f);
+            let a = hash21(p.xy + p.z * vec2<f32>(113.0, 0.0));
+            let b = hash21(p.xy + vec2<f32>(1.0, 0.0) + p.z * vec2<f32>(113.0, 0.0));
+            let c = hash21(p.xy + vec2<f32>(0.0, 1.0) + p.z * vec2<f32>(113.0, 0.0));
+            let d = hash21(p.xy + vec2<f32>(1.0, 1.0) + p.z * vec2<f32>(113.0, 0.0));
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+          }
+
+          fn fbm(p: vec3<f32>) -> f32 {
+            var f = 0.0; var pos = p; var amp = 0.5;
+            for (var i = 0; i < 3; i++) { f += amp * valueNoise3D(pos); pos *= 2.0; amp *= 0.5; }
+            return f;
+          }
+
+          struct TerrainData { floorH: f32, waterH: f32, biome: f32 };
+
+          fn getTerrainHash(cx: i32, cz: i32, seedInt: i32) -> f32 {
+            var h: u32 = u32(cx * 1619 + cz * 31337 + seedInt * 1013);
+            h = (h ^ (h >> 13u)) * 0x85ebca6bu;
+            h = (h ^ (h >> 13u)) * 0xc2b2ae35u;
+            h = (h ^ (h >> 16u));
+            return f32(h) / 4294967296.0;
+          }
+
+          fn getTerrain(cx: i32, cz: i32) -> TerrainData {
+            let seedInt = i32(uniforms.rt.w);
+            let roomHash = getTerrainHash(cx, cz, seedInt);
+            var floorH = 0.0; var waterH = -100.0; var biome = 0.0;
+            if (roomHash < 0.25) { floorH = 0.0; waterH = -100.0; biome = 0.0;
+            } else if (roomHash < 0.55) { floorH = -0.35; waterH = 0.0; biome = 1.0;
+            } else if (roomHash < 0.85) { floorH = -3.20; waterH = 0.0; biome = 2.0;
+            } else { floorH = -8.00; waterH = 0.0; biome = 3.0; }
+            return TerrainData(floorH, waterH, biome);
+          }
+
+          fn waterHeight(p: vec2<f32>, time: f32) -> f32 {
+            var h = 0.0;
+            for (var i = 0u; i < 32u; i = i + 1u) {
+              let rip = uniforms.ripples[i];
+              let age = time - rip.z;
+              if (rip.w <= 0.0 || age <= 0.0 || age >= 12.0) { continue; }
+              let dist = length(p - rip.xy);
+              let distFromRing = dist - (age * 1.6);
+              if (abs(distFromRing) > 1.0) { continue; }
+              let dring = distFromRing * 3.5;
+              let envelope = exp(-(dring * dring + dist * 0.25 + age * 0.2));
+              h += rip.w * envelope * cos(distFromRing * 28.0) * 0.025;
+            }
+            return h;
+          }
+
+          fn calcWaterNormal(p: vec2<f32>, time: f32) -> vec3<f32> {
+            let eps = 0.015;
+            let hx = waterHeight(p + vec2<f32>(eps, 0.0), time) - waterHeight(p - vec2<f32>(eps, 0.0), time);
+            let hy = waterHeight(p + vec2<f32>(0.0, eps), time) - waterHeight(p - vec2<f32>(0.0, eps), time);
+            return normalize(vec3<f32>(-hx, eps * 2.0, -hy));
+          }
+
+          fn getCaustics(p: vec2<f32>, time: f32) -> f32 {
+            let p1 = p * 1.5 + time * 0.4; let p2 = p * 2.5 - time * 0.5;
+            let s1 = sin(p1.x) * cos(p1.y); let s2 = sin(p2.x) * cos(p2.y);
+            return pow(abs(s1 + s2), 2.5) * 1.5;
+          }
+
+          fn underwaterParticles(uv: vec2<f32>, time: f32) -> f32 {
+            let p = uv * 40.0 + vec2<f32>(time * 0.15, time * 0.35);
+            let cellId = floor(p); let cellUv = fract(p) - 0.5;
+            let n = hash21(cellId + vec2<f32>(7.1, 3.7));
+            return smoothstep(0.10, 0.0, length(cellUv)) * step(0.986, n);
+          }
+
+          fn rayWaterHit(ro: vec3<f32>, rd: vec3<f32>, time: f32) -> f32 {
+            if (abs(rd.y) < 1e-5) { return -1.0; }
+            var tw = -ro.y / rd.y;
+            if (tw <= 0.0 || tw > 90.0) { return -1.0; }
+
+            for (var k = 0; k < 3; k++) {
+              let p_try = ro + rd * tw;
+              let cx = i32(round(p_try.x / 12.0));
+              let cz = i32(round(p_try.z / 12.0));
+              let terr_try = getTerrain(cx, cz);
+              if (terr_try.waterH < -50.0) { return -1.0; }
+              tw = ((terr_try.waterH + waterHeight(p_try.xz, time)) - ro.y) / rd.y;
+              if (tw <= 0.0) { return -1.0; }
+            }
+            let p_f = ro + rd * tw;
+            let cx = i32(round(p_f.x / 12.0)); let cz = i32(round(p_f.z / 12.0));
+            if (getTerrain(cx, cz).waterH < -50.0) { return -1.0; }
+            return tw;
+          }
+
+          fn sdBox(p: vec3<f32>, b: vec3<f32>) -> f32 {
+            let d = abs(p) - b;
+            return length(max(d, vec3<f32>(0.0))) + min(max(d.x, max(d.y, d.z)), 0.0);
+          }
+
+          fn sdBox2D(p: vec2<f32>, b: vec2<f32>) -> f32 {
+            let d = abs(p) - b;
+            return length(max(d, vec2<f32>(0.0))) + min(max(d.x, d.y), 0.0);
+          }
+
+          struct MapResult { d: f32, mat_id: i32 };
+
+          // 3D Backrooms Hazmat Suit SDF for Remote Players
+          fn sdHazmatSuit(pos: vec3<f32>, playerPos: vec3<f32>, rot: vec4<f32>) -> MapResult {
+            let yaw = rot.x;
+            let isSubmerged = rot.z;
+            let walkPhase = rot.w;
+
+            let dWorld = pos - playerPos;
+            let cosY = cos(yaw);
+            let sinY = sin(yaw);
+
+            var p = vec3<f32>(
+              dWorld.x * cosY + dWorld.z * sinY,
+              dWorld.y,
+              -dWorld.x * sinY + dWorld.z * cosY
+            );
+
+            if (isSubmerged > 0.5) {
+              let swimAngle = 0.85;
+              let cS = cos(swimAngle);
+              let sS = sin(swimAngle);
+              p = vec3<f32>(p.x, p.y * cS - p.z * sS, p.y * sS + p.z * cS);
+            }
+
+            var d_min = 100.0;
+            var mat = 2;
+
+            let d_hood = sdBox(p - vec3<f32>(0.0, -0.02, 0.02), vec3<f32>(0.17, 0.19, 0.18)) - 0.04;
+            if (d_hood < d_min) { d_min = d_hood; mat = 2; }
+
+            let d_visor = sdBox(p - vec3<f32>(0.0, -0.02, -0.17), vec3<f32>(0.11, 0.08, 0.02)) - 0.02;
+            if (d_visor < d_min) { d_min = d_visor; mat = 3; }
+
+            let d_resp = sdBox(p - vec3<f32>(0.0, -0.16, -0.15), vec3<f32>(0.05, 0.03, 0.04)) - 0.015;
+            if (d_resp < d_min) { d_min = d_resp; mat = 4; }
+
+            let d_torso = sdBox(p - vec3<f32>(0.0, -0.42, 0.02), vec3<f32>(0.23, 0.21, 0.15)) - 0.04;
+            if (d_torso < d_min) { d_min = d_torso; mat = 2; }
+
+            let d_tank = sdBox(p - vec3<f32>(0.0, -0.40, 0.22), vec3<f32>(0.10, 0.18, 0.08)) - 0.03;
+            if (d_tank < d_min) { d_min = d_tank; mat = 4; }
+
+            let swing = sin(walkPhase) * 0.12;
+            let sign_x = select(-1.0, 1.0, p.x >= 0.0);
+
+            let leg_x = abs(p.x) - 0.12;
+            let leg_z = p.z - sign_x * swing;
+            let d_leg = sdBox(vec3<f32>(leg_x, p.y - (-0.82), leg_z), vec3<f32>(0.08, 0.16, 0.09)) - 0.03;
+            if (d_leg < d_min) { d_min = d_leg; mat = 2; }
+
+            let d_boot = sdBox(vec3<f32>(leg_x, p.y - (-1.10), leg_z - (-0.02)), vec3<f32>(0.085, 0.08, 0.13)) - 0.02;
+            if (d_boot < d_min) { d_min = d_boot; mat = 5; }
+
+            let arm_x = abs(p.x) - 0.31;
+            let arm_z = p.z + sign_x * swing * 0.8;
+            let d_arm = sdBox(vec3<f32>(arm_x, p.y - (-0.42), arm_z), vec3<f32>(0.06, 0.18, 0.065)) - 0.03;
+            if (d_arm < d_min) { d_min = d_arm; mat = 2; }
+
+            let d_glove = sdBox(vec3<f32>(arm_x, p.y - (-0.63), arm_z), vec3<f32>(0.065, 0.05, 0.065)) - 0.02;
+            if (d_glove < d_min) { d_min = d_glove; mat = 5; }
+
+            return MapResult(d_min, mat);
+          }
+
+          fn map(pos: vec3<f32>) -> MapResult {
+            var d_scene = 4.0 - pos.y;
+            var mat_id = 0;
+            let spacing = 12.0;
+
+            let base_x = round(pos.x / spacing);
+            let base_z = round(pos.z / spacing);
+
+            let qx0 = pos.x - base_x * spacing;
+            let qz0 = pos.z - base_z * spacing;
+
+            let dir_x = select(-1.0, 1.0, qx0 >= 0.0);
+            let dir_z = select(-1.0, 1.0, qz0 >= 0.0);
+
+            let terr = getTerrain(i32(base_x), i32(base_z));
+            let d_floor = sdBox(vec3<f32>(qx0, pos.y - (terr.floorH - 20.0), qz0), vec3<f32>(6.01, 20.0, 6.01));
+            if (d_floor < d_scene) { d_scene = d_floor; }
+
+            if (terr.biome < 2.5) {
+              let colCenterY = (terr.floorH + 4.0) * 0.5;
+              let colHalfH = (4.0 - terr.floorH) * 0.5;
+              let d_col = sdBox(vec3<f32>(abs(qx0) - 5.0, pos.y - colCenterY, abs(qz0) - 5.0), vec3<f32>(0.8, colHalfH, 0.8));
+              if (d_col < d_scene) { d_scene = d_col; }
+
+              let wallCenterY = colCenterY;
+              let wallHalfH = colHalfH;
+              if (5.75 - abs(qx0) < d_scene) {
+                let d_w1 = sdBox(vec3<f32>(abs(qx0) - 6.0, pos.y - wallCenterY, abs(qz0) - 3.9), vec3<f32>(0.25, wallHalfH, 2.1));
+                if (d_w1 < d_scene) { d_scene = d_w1; }
+              }
+              if (5.75 - abs(qz0) < d_scene) {
+                let d_w2 = sdBox(vec3<f32>(abs(qx0) - 3.9, pos.y - wallCenterY, abs(qz0) - 6.0), vec3<f32>(2.1, wallHalfH, 0.25));
+                if (d_w2 < d_scene) { d_scene = d_w2; }
+              }
+            }
+
+            let cx_arr = array<f32, 3>(base_x + dir_x, base_x, base_x + dir_x);
+            let cz_arr = array<f32, 3>(base_z, base_z + dir_z, base_z + dir_z);
+
+            for (var i = 0; i < 3; i++) {
+              let cx = cx_arr[i];
+              let cz = cz_arr[i];
+              let qx = pos.x - cx * spacing;
+              let qz = pos.z - cz * spacing;
+
+              let d2d = sdBox2D(vec2<f32>(qx, qz), vec2<f32>(6.25, 6.25));
+              if (d2d >= d_scene) { continue; }
+
+              let n_terr = getTerrain(i32(cx), i32(cz));
+              let d_n_floor = sdBox(vec3<f32>(qx, pos.y - (n_terr.floorH - 20.0), qz), vec3<f32>(6.01, 20.0, 6.01));
+              if (d_n_floor < d_scene) { d_scene = d_n_floor; }
+
+              if (n_terr.biome < 2.5) {
+                let n_colCenterY = (n_terr.floorH + 4.0) * 0.5;
+                let n_colHalfH = (4.0 - n_terr.floorH) * 0.5;
+                let d_n_col = sdBox(vec3<f32>(abs(qx) - 5.0, pos.y - n_colCenterY, abs(qz) - 5.0), vec3<f32>(0.8, n_colHalfH, 0.8));
+                if (d_n_col < d_scene) { d_scene = d_n_col; }
+
+                let n_wallCenterY = n_colCenterY;
+                let n_wallHalfH = n_colHalfH;
+                let d_w1 = sdBox(vec3<f32>(abs(qx) - 6.0, pos.y - n_wallCenterY, abs(qz) - 3.9), vec3<f32>(0.25, n_wallHalfH, 2.1));
+                let d_w2 = sdBox(vec3<f32>(abs(qx) - 3.9, pos.y - n_wallCenterY, abs(qz) - 6.0), vec3<f32>(2.1, n_wallHalfH, 0.25));
+                let d_w = min(d_w1, d_w2);
+                if (d_w < d_scene) { d_scene = d_w; }
+              }
+            }
+
+            if (3.87 - pos.y < d_scene) {
+              let d_light = sdBox(vec3<f32>(qx0, pos.y - 3.95, qz0), vec3<f32>(1.6, 0.08, 1.6));
+              if (d_light < d_scene) { d_scene = d_light; mat_id = 1; }
+            }
+
+            // Remote players in hazmat suits
+            for (var pi = 0u; pi < 8u; pi = pi + 1u) {
+              let rPlayer = uniforms.players[pi];
+              if (rPlayer.pos.w > 0.5) {
+                let dCenter = pos - (rPlayer.pos.xyz + vec3<f32>(0.0, -0.5, 0.0));
+                let distSq = dot(dCenter, dCenter);
+                if (distSq < 3.24) {
+                  let playerRes = sdHazmatSuit(pos, rPlayer.pos.xyz, rPlayer.rot);
+                  if (playerRes.d < d_scene) {
+                    d_scene = playerRes.d;
+                    mat_id = playerRes.mat_id;
+                  }
+                } else {
+                  let d_bound = sqrt(distSq) - 0.75;
+                  if (d_bound < d_scene) {
+                    d_scene = d_bound;
+                  }
+                }
+              }
+            }
+
+            return MapResult(d_scene, mat_id);
+          }
+
+          fn calcNormal(p: vec3<f32>) -> vec3<f32> {
+            let e = vec2<f32>(0.002, 0.0); let d = map(p).d;
+            return normalize(vec3<f32>(map(p + e.xyy).d - d, map(p + e.yxy).d - d, map(p + e.yyx).d - d));
+          }
+
+          struct Material { albedo: vec3<f32>, roughness: f32, metallic: f32, normal: vec3<f32> };
+
+          fn getTileMaterial(p: vec3<f32>, n: vec3<f32>) -> Material {
+            let scale = 3.0; var uv: vec2<f32>;
+            if (abs(n.y) > 0.5) { uv = p.xz; }
+            else if (abs(n.x) > 0.5) { uv = p.yz; }
+            else { uv = p.xy; }
+            let fuv = fract(uv * scale);
+            let grout = step(fuv.x, 0.035) + step(fuv.y, 0.035);
+            let is_grout = clamp(grout, 0.0, 1.0);
+            let noise_val = fbm(p * 6.0);
+            let albedo = mix(vec3<f32>(0.92, 0.95, 0.93) - (noise_val * 0.08), vec3<f32>(0.15, 0.18, 0.16), is_grout);
+            return Material(albedo, mix(0.12 + noise_val * 0.1, 0.85, is_grout), 0.0, n);
+          }
+
+          fn getSceneMaterial(p: vec3<f32>, n: vec3<f32>, mat_id: i32) -> Material {
+            if (mat_id == 2) {
+              let wrinkle = fbm(p * 8.0) * 0.05;
+              let yellow = vec3<f32>(0.94 - wrinkle, 0.76 - wrinkle, 0.10);
+              return Material(yellow, 0.40, 0.0, n);
+            } else if (mat_id == 3) {
+              return Material(vec3<f32>(0.02, 0.03, 0.04), 0.05, 0.3, n);
+            } else if (mat_id == 4) {
+              return Material(vec3<f32>(0.72, 0.75, 0.78), 0.22, 0.75, n);
+            } else if (mat_id == 5) {
+              return Material(vec3<f32>(0.07, 0.08, 0.09), 0.65, 0.0, n);
+            }
+            return getTileMaterial(p, n);
+          }
+
+          fn calcLighting(p: vec3<f32>, mat: Material, rd: vec3<f32>) -> vec3<f32> {
+            let cell = round(p.xz / 12.0);
+            let light_pos = vec3<f32>(cell.x * 12.0, 3.8, cell.y * 12.0);
+            let L = normalize(light_pos - p); let dist = length(light_pos - p);
+            let attenuation = 1.0 / (1.0 + 0.12 * dist + 0.04 * dist * dist);
+            let NdotL = max(dot(mat.normal, L), 0.0);
+            let diffuse = mat.albedo * NdotL * vec3<f32>(4.09983, 4.32265, 4.45634) * attenuation;
+
+            let H = normalize(L - rd);
+            let NdotH = max(dot(mat.normal, H), 0.0);
+            let specPower = mix(96.0, 16.0, mat.roughness);
+            let specInt = pow(NdotH, specPower) * (1.0 - mat.roughness * 0.7);
+            let specCol = mix(vec3<f32>(1.0), mat.albedo, mat.metallic);
+            let specular = specCol * specInt * attenuation * 3.2;
+
+            return diffuse + specular + mat.albedo * vec3<f32>(0.035, 0.055, 0.065);
+          }
+
+          fn fresnelScalar(cosTheta: f32, f0: f32) -> f32 { return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0); }
+
+          @fragment
+          fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+            let time = uniforms.rt.z; let aspect = uniforms.rt.x / uniforms.rt.y;
+            let scr = vec2<f32>((in.uv.x * 2.0 - 1.0) * aspect, in.uv.y * 2.0 - 1.0);
+            let ro = uniforms.cam.xyz; let ww = normalize(uniforms.dir.xyz);
+            let uu = normalize(cross(ww, vec3<f32>(0.0, 1.0, 0.0)));
+            let fovFactor = uniforms.dir.w;
+            let rd = normalize(scr.x * uu + scr.y * cross(uu, ww) + fovFactor * ww);
+            let camUnderwater = uniforms.cam.w > 0.5;
+
+            let t_water = rayWaterHit(ro, rd, time);
+            let max_t = select(90.0, t_water, t_water > 0.0);
+
+            var t_solid = 0.0; var mat_id = 0; var hit_solid = false;
+            for (var i = 0; i < 140; i++) {
+              let r = map(ro + rd * t_solid);
+              let hitEps = max(0.0015, t_solid * 0.0012);
+              if (r.d < hitEps) { mat_id = r.mat_id; hit_solid = true; break; }
+              if (t_solid >= max_t) { break; }
+              t_solid += max(r.d * 0.95, 0.008);
+            }
+
+            let fog_color = vec3<f32>(0.04, 0.14, 0.16);
+            let water_fog = vec3<f32>(0.55, 0.72, 0.88);
+            var final_color = vec3<f32>(0.0);
+
+            if (camUnderwater) {
+              var hit_dist = 90.0;
+              if (t_water > 0.0 && (t_water <= t_solid || !hit_solid)) {
+                let p_sur = ro + rd * t_water;
+                let w_norm = calcWaterNormal(p_sur.xz, time);
+                let un_norm = vec3<f32>(w_norm.x, -w_norm.y, w_norm.z);
+                let refr_rd = refract(rd, un_norm, 1.33 / 1.0);
+
+                if (length(refr_rd) > 0.0) {
+                  var t_ab = 0.02; var hit_ab = false; var ab_mat = 0;
+                  for (var j = 0; j < 55; j++) {
+                    let rr = map(p_sur + refr_rd * t_ab);
+                    if (rr.d < max(0.0018, t_ab * 0.0015)) { hit_ab = true; ab_mat = rr.mat_id; break; }
+                    t_ab += max(rr.d * 0.95, 0.008); if (t_ab > 45.0) { break; }
+                  }
+                  if (hit_ab) {
+                    let p_a = p_sur + refr_rd * t_ab;
+                    if (ab_mat == 1) { final_color = vec3<f32>(1.0, 1.0, 0.95) * 2.2; }
+                    else { final_color = calcLighting(p_a, getSceneMaterial(p_a, calcNormal(p_a), ab_mat), refr_rd); }
+                  } else { final_color = fog_color; }
+                } else {
+                  let m_rd = reflect(rd, un_norm);
+                  var t_m = 0.02; var hit_m = false; var m_mat = 0;
+                  for (var mi = 0; mi < 40; mi++) {
+                    let rr = map(p_sur + m_rd * t_m);
+                    if (rr.d < max(0.0018, t_m * 0.0015)) { hit_m = true; m_mat = rr.mat_id; break; }
+                    t_m += max(rr.d * 0.95, 0.008); if (t_m > 30.0) { break; }
+                  }
+                  if (hit_m) {
+                    let p_m = p_sur + m_rd * t_m;
+                    if (m_mat == 1) { final_color = vec3<f32>(1.0, 1.0, 0.95) * 2.2; }
+                    else {
+                      final_color = calcLighting(p_m, getSceneMaterial(p_m, calcNormal(p_m), m_mat), m_rd) * (1.0 + getCaustics(p_m.xz, time) * 0.45);
+                    }
+                    final_color *= exp(-t_m * vec3<f32>(0.08, 0.06, 0.04));
+                  } else { final_color = water_fog * 0.4; }
+                }
+                final_color *= exp(-t_water * vec3<f32>(0.08, 0.06, 0.04)); hit_dist = t_water;
+              } else if (hit_solid) {
+                let p = ro + rd * t_solid;
+                if (mat_id == 1) { final_color = vec3<f32>(1.0, 1.0, 0.95) * 2.2; }
+                else { final_color = calcLighting(p, getSceneMaterial(p, calcNormal(p), mat_id), rd) * (1.0 + getCaustics(p.xz, time) * 0.55); }
+                final_color *= exp(-t_solid * vec3<f32>(0.08, 0.06, 0.04)); hit_dist = t_solid;
+              } else { final_color = water_fog * 0.3; }
+
+              final_color = mix(final_color, water_fog * 0.5, 1.0 - exp(-pow(hit_dist * 0.025, 1.5)));
+              final_color += vec3<f32>(0.6, 0.7, 0.8) * underwaterParticles(in.uv, time) * 0.3;
+            } else {
+              if (t_water > 0.0 && (t_water <= t_solid || !hit_solid)) {
+                let p_w = ro + rd * t_water;
+                let w_norm = calcWaterNormal(p_w.xz, time);
+                let ref_rd = reflect(rd, w_norm);
+                var ref_col = vec3<f32>(0.15, 0.2, 0.25);
+                if (ref_rd.y > 0.0) {
+                  let cell_c = fract((p_w + ref_rd * ((4.0 - p_w.y) / ref_rd.y)).xz / 12.0);
+                  if (cell_c.x > 0.8 && cell_c.y > 0.8) { ref_col = vec3<f32>(1.0, 1.0, 0.95) * 2.0; }
+                }
+
+                let refr_rd = refract(rd, w_norm, 1.0 / 1.33);
+                var t_u = 0.02; var hit_u = false; var u_mat = 0;
+                for (var j = 0; j < 55; j++) {
+                  let rr = map(p_w + refr_rd * t_u);
+                  if (rr.d < max(0.0018, t_u * 0.0015)) { hit_u = true; u_mat = rr.mat_id; break; }
+                  t_u += max(rr.d * 0.95, 0.008); if (t_u > 45.0) { break; }
+                }
+                var under_col = water_fog;
+                if (hit_u) {
+                  let p_u = p_w + refr_rd * t_u;
+                  if (u_mat == 1) {
+                    under_col = vec3<f32>(1.0, 1.0, 0.95) * 2.2;
+                  } else {
+                    under_col = mix(calcLighting(p_u, getSceneMaterial(p_u, calcNormal(p_u), u_mat), refr_rd) * (1.0 + getCaustics(p_u.xz, time) * 0.35) * exp(-t_u * vec3<f32>(0.08, 0.06, 0.04)), water_fog, 0.1);
+                  }
+                } else { under_col = mix(under_col, water_fog, 0.2); }
+
+                final_color = mix(under_col, ref_col, fresnelScalar(max(dot(-rd, w_norm), 0.0), 0.02) * 0.8);
+                t_solid = t_water;
+              } else if (hit_solid) {
+                let p = ro + rd * t_solid;
+                if (mat_id == 1) { final_color = vec3<f32>(1.0, 1.0, 0.95) * 2.2; }
+                else { final_color = calcLighting(p, getSceneMaterial(p, calcNormal(p), mat_id), rd); }
+              } else { final_color = fog_color; }
+              final_color = mix(final_color, fog_color, 1.0 - exp(-pow(t_solid * 0.04, 2.2)));
+            }
+
+            return vec4<f32>(pow(final_color / (final_color + vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0);
+          }
+        `;
+
+        const shaderModule = device.createShaderModule({ code: shaderCode });
+        const pipeline = device.createRenderPipeline({
+          layout: 'auto',
+          vertex: { module: shaderModule, entryPoint: 'vs_main' },
+          fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format: presentationFormat }] },
+          primitive: { topology: 'triangle-list' },
+        });
+
+        const uniformBuffer = device.createBuffer({ size: 832, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: uniformBuffer } }] });
+        const uniformData = new Float32Array(208);
+
+        // UI elements
+        const usernameGateModal = document.getElementById('username-gate-modal');
+        const usernameGateInput = document.getElementById('username-gate-input');
+        const btnSetUsername = document.getElementById('btn-set-username');
+        const activeUsernameDisplay = document.getElementById('active-username-display');
+        const userActiveChip = document.getElementById('user-active-chip');
+
+        const startMenu = document.getElementById('poolrooms-start-menu');
+        const startButton = document.getElementById('poolrooms-start-button');
+        const startBtnText = document.getElementById('start-btn-text');
+        const crosshair = document.getElementById('crosshair');
+        const vignetteEl = document.getElementById('vignette');
+        const hudEl = document.getElementById('hud');
+        const hudFpsEl = document.getElementById('hud-fps');
+        const hudGraphicsEl = document.getElementById('hud-graphics');
+        const hudBiomeEl = document.getElementById('hud-biome');
+        const hudPosEl = document.getElementById('hud-pos');
+        const hudMpRow = document.getElementById('hud-mp-row');
+        const hudMpVal = document.getElementById('hud-mp-val');
+        const oxygenWrap = document.getElementById('oxygen-wrap');
+        const oxygenFillEl = document.getElementById('oxygen-fill');
+        const minimapCanvas = document.getElementById('minimap-canvas');
+        const minimapCtx = minimapCanvas.getContext('2d');
+        const pauseOverlay = document.getElementById('pause-overlay');
+        const pauseMpDetails = document.getElementById('pause-mp-details');
+        const remoteTagsLayer = document.getElementById('remote-tags-layer');
+
+        // Multiplayer modal elements
+        const mpModal = document.getElementById('multiplayer-modal');
+        const btnPlayMp = document.getElementById('btn-play-multiplayer');
+        const btnMpClose = document.getElementById('mp-modal-close');
+        const mpCodeInput = document.getElementById('mp-code-input');
+        const btnJoinCode = document.getElementById('btn-join-code');
+        const btnCreateCode = document.getElementById('btn-create-code');
+        const btnCopyCode = document.getElementById('btn-copy-code');
+        const copyCodeText = document.getElementById('copy-code-text');
+        const mpStatusMsg = document.getElementById('mp-status-msg');
+        const mpStatusDot = document.getElementById('mp-status-dot');
+        const mpNetworkStatus = document.getElementById('mp-network-status');
+        const mpTopBadge = document.getElementById('mp-top-badge');
+
+        // Multiplayer In-Game Chat Elements
+        const inGameChatBtn = document.getElementById('in-game-chat-btn');
+        const chatUnreadBadge = document.getElementById('chat-unread-badge');
+        const chatPanel = document.getElementById('chat-panel');
+        const chatCloseBtn = document.getElementById('chat-close-btn');
+        const chatMessagesContainer = document.getElementById('chat-messages-container');
+        const chatInput = document.getElementById('chat-input');
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        const chatToastPreview = document.getElementById('chat-toast-preview');
+        const chatRoomTitle = document.getElementById('chat-room-title');
+
+        let gameStarted = false;
+        let hudVisible = false;
+        let minimapVisible = false;
+        let wasSubmerged = false;
+        let unreadChatCount = 0;
+        let toastTimeout = null;
+        const audio = new AudioManager();
+        const BIOME_NAMES = ['Dry Hall', 'Shallow Pool', 'Deep Pool', 'Open Water'];
+        const BIOME_COLORS = ['rgba(210,205,190,0.55)', 'rgba(90,170,190,0.55)', 'rgba(50,120,150,0.60)', 'rgba(25,70,110,0.65)'];
+
+        // USERNAME INITIALIZATION
+        let playerUsername = '';
+        try {
+          playerUsername = localStorage.getItem('poolrooms_username') || '';
+        } catch(e) {}
+        if (playerUsername && usernameGateInput) {
+          usernameGateInput.value = playerUsername;
+        }
+
+        function commitUsername(name) {
+          let clean = (name || '').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, 16);
+          if (!clean || clean.length < 2) {
+            clean = 'HAZMAT_' + Math.floor(100 + Math.random() * 900);
+          }
+          playerUsername = clean;
+          try {
+            localStorage.setItem('poolrooms_username', playerUsername);
+          } catch(e) {}
+          if (activeUsernameDisplay) activeUsernameDisplay.textContent = playerUsername;
+          if (network) network.setUsername(playerUsername);
+          usernameGateModal.classList.add('hidden');
+          audio.init();
+          audio.resume();
+          audio.playUiClick();
+        }
+
+        btnSetUsername.addEventListener('click', () => {
+          commitUsername(usernameGateInput.value);
+        });
+        usernameGateInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            commitUsername(usernameGateInput.value);
+          }
+        });
+        userActiveChip.addEventListener('click', () => {
+          usernameGateInput.value = playerUsername;
+          usernameGateModal.classList.remove('hidden');
+          setTimeout(() => usernameGateInput.focus(), 150);
+        });
+
+        // Initialize Chat UI handlers
+        function appendChatMessage({ name, text, time, isSelf, isSystem }) {
+          const entry = document.createElement('div');
+          entry.className = 'chat-entry' + (isSystem ? ' system' : '');
+          const d = new Date(time || Date.now());
+          const timeStr = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+
+          if (isSystem) {
+            entry.textContent = `[${timeStr}] ${text}`;
+          } else {
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'chat-time';
+            timeSpan.textContent = timeStr;
+
+            const authorSpan = document.createElement('span');
+            authorSpan.className = 'chat-author' + (isSelf ? ' self' : '');
+            authorSpan.textContent = name + ':';
+
+            const textSpan = document.createElement('span');
+            textSpan.className = 'chat-text';
+            textSpan.textContent = text;
+
+            entry.appendChild(timeSpan);
+            entry.appendChild(authorSpan);
+            entry.appendChild(textSpan);
+          }
+
+          chatMessagesContainer.appendChild(entry);
+          chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+
+          if (chatPanel.classList.contains('hidden') && !isSelf && !isSystem) {
+            unreadChatCount++;
+            chatUnreadBadge.textContent = unreadChatCount > 9 ? '9+' : unreadChatCount;
+            chatUnreadBadge.style.display = 'inline-flex';
+            audio.playChatChime();
+
+            chatToastPreview.innerHTML = `<strong style="color:#ffcc00;">${name}:</strong> ${text}`;
+            chatToastPreview.classList.add('show');
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+              chatToastPreview.classList.remove('show');
+            }, 3600);
+          }
+        }
+
+        function openChat() {
+          if (!network.roomCode) return;
+          if (document.pointerLockElement) {
+            document.exitPointerLock();
+          }
+          chatPanel.classList.remove('hidden');
+          inGameChatBtn.setAttribute('aria-expanded', 'true');
+          unreadChatCount = 0;
+          chatUnreadBadge.style.display = 'none';
+          chatToastPreview.classList.remove('show');
+          setTimeout(() => chatInput.focus(), 80);
+        }
+
+        function closeChat() {
+          chatPanel.classList.add('hidden');
+          inGameChatBtn.setAttribute('aria-expanded', 'false');
+        }
+
+        inGameChatBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (chatPanel.classList.contains('hidden')) openChat();
+          else closeChat();
+        });
+
+        chatCloseBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          closeChat();
+        });
+
+        chatSendBtn.addEventListener('click', () => {
+          const text = chatInput.value;
+          if (text.trim()) {
+            network.sendChat(text);
+            chatInput.value = '';
+          }
+          chatInput.focus();
+        });
+
+        chatInput.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            const text = chatInput.value;
+            if (text.trim()) {
+              network.sendChat(text);
+              chatInput.value = '';
+            }
+          } else if (e.key === 'Escape') {
+            closeChat();
+          }
+        });
+
+        window.addEventListener('keydown', (e) => {
+          const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+          if (targetTag === 'input' || targetTag === 'textarea') return;
+
+          if (gameStarted && network.roomCode && (e.key.toLowerCase() === 't')) {
+            e.preventDefault();
+            openChat();
+          }
+        });
+
+        // Networking manager instance
+        const network = new NetworkManager({
+          username: playerUsername || 'OPERATIVE',
+          onStatus: (type, text) => {
+            if (mpNetworkStatus) mpNetworkStatus.textContent = `Network: ${text}`;
+            if (mpStatusDot) {
+              mpStatusDot.className = 'network-dot ' + (type === 'connected' ? 'connected' : (type === 'connecting' ? 'connecting' : ''));
+            }
+            if (type === 'connected') {
+              if (mpTopBadge && network.roomCode) mpTopBadge.textContent = 'ONLINE #' + network.roomCode;
+              if (chatRoomTitle && network.roomCode) chatRoomTitle.textContent = `RADIO CHAT · #${network.roomCode}`;
+            }
+          },
+          onSyncSeed: (hostSeed, hostPos) => {
+            levelSeedInt = hostSeed;
+            player.seed = hostSeed;
+            window.currentLevelSeed = hostSeed;
+            uniformData[3] = levelSeedInt;
+            if (hostPos) {
+              player.position.set(hostPos.x + 1.5, hostPos.y, hostPos.z + 1.5);
+              player.yaw = Math.atan2(hostPos.x - player.position.x, -(hostPos.z - player.position.z));
+              player.velocity.set(0, 0, 0);
+            }
+            if (mpStatusMsg) {
+              mpStatusMsg.innerHTML = `<span style="color:#7ce3d0;">Synchronized with Host! Spawning into Level 37...</span>`;
+            }
+            setTimeout(() => {
+              enterGame();
+            }, 300);
+          },
+          onPlayerCountChange: (count) => {
+            if (hudMpRow && hudMpVal && network.roomCode) {
+              hudMpRow.style.display = 'flex';
+              hudMpVal.textContent = `Room #${network.roomCode} (${count} Hazmat${count > 1 ? 's' : ''})`;
+            }
+            if (pauseMpDetails && network.roomCode) {
+              pauseMpDetails.style.display = 'block';
+              pauseMpDetails.textContent = `MULTIPLAYER ROOM: #${network.roomCode} · ${count} HAZMAT SUIT${count > 1 ? 'S' : ''} CONNECTED`;
+            }
+          },
+          onChatMessage: (msg) => {
+            appendChatMessage(msg);
+          }
+        });
+
+        function spawnWaterRipple(x, z, strength = 1.0) {
+          const rBase = 12 + rippleIdx * 4;
+          uniformData[rBase] = x;
+          uniformData[rBase + 1] = z;
+          uniformData[rBase + 2] = (performance.now() - startTime) / 1000.0;
+          uniformData[rBase + 3] = strength;
+          rippleIdx = (rippleIdx + 1) % 32;
+        }
+
+        function enterGame() {
+          if(gameStarted) return;
+          if(!playerUsername) {
+            commitUsername(usernameGateInput.value || 'WANDERER_01');
+          }
+          gameStarted = true;
+          startMenu.classList.add('hidden');
+          mpModal.classList.add('hidden');
+          crosshair.style.display = 'block';
+          audio.init();
+          audio.resume();
+          audio.playUiStart();
+          startTime = performance.now();
+          lastTime = startTime;
+
+          if (network.roomCode) {
+            inGameChatBtn.style.display = 'inline-flex';
+            appendChatMessage({
+              text: `Entered Room #${network.roomCode} as ${network.username}. Radio active.`,
+              isSystem: true,
+              time: Date.now()
+            });
+          } else {
+            inGameChatBtn.style.display = 'none';
+          }
+
+          try {
+            canvas.requestPointerLock()?.catch?.(() => {});
+          } catch(e) {}
+          try { window.focus(); } catch(e) {}
+          requestAnimationFrame(frame);
+        }
+
+        function drawMinimap(){
+          const spacing=12.0;
+          const cellX=Math.round(player.position.x/spacing);
+          const cellZ=Math.round(player.position.z/spacing);
+          minimapCtx.clearRect(0,0,180,180);
+          for(let dz=-6; dz<=6; dz++){
+            for(let dx=-6; dx<=6; dx++){
+              const cx=cellX+dx, cz=cellZ+dz;
+              const px=(dx+6)*13.84; const py=(dz+6)*13.84;
+              minimapCtx.fillStyle=BIOME_COLORS[getTerrainHeight(cx*spacing, cz*spacing, player.seed).biome];
+              minimapCtx.fillRect(px+1, py+1, 11.84, 11.84);
+            }
+          }
+
+          // Remote players on minimap in glowing yellow
+          for (const [id, rp] of network.remotePlayers) {
+            const rdx = (rp.currentPos.x - player.position.x) / spacing;
+            const rdz = (rp.currentPos.z - player.position.z) / spacing;
+            const rpx = 90 + rdx * 13.84;
+            const rpy = 90 + rdz * 13.84;
+            if (rpx >= 4 && rpx <= 176 && rpy >= 4 && rpy <= 176) {
+              minimapCtx.save();
+              minimapCtx.translate(rpx, rpy);
+              minimapCtx.fillStyle = '#ffcc00';
+              minimapCtx.shadowColor = '#ffcc00';
+              minimapCtx.shadowBlur = 6;
+              minimapCtx.beginPath();
+              minimapCtx.arc(0, 0, 4.5, 0, Math.PI * 2);
+              minimapCtx.fill();
+              minimapCtx.strokeStyle = '#111111';
+              minimapCtx.lineWidth = 2;
+              minimapCtx.beginPath();
+              minimapCtx.moveTo(0, 0);
+              minimapCtx.lineTo(Math.sin(rp.currentYaw) * 6, -Math.cos(rp.currentYaw) * 6);
+              minimapCtx.stroke();
+              minimapCtx.restore();
+            }
+          }
+
+          // Local player in cyan
+          minimapCtx.save(); minimapCtx.translate(90, 90); minimapCtx.rotate(player.yaw);
+          minimapCtx.fillStyle='#7ce3d0'; minimapCtx.shadowColor='#7ce3d0'; minimapCtx.shadowBlur=8;
+          minimapCtx.beginPath(); minimapCtx.moveTo(0,-7); minimapCtx.lineTo(5,6); minimapCtx.lineTo(-5,6); minimapCtx.fill(); minimapCtx.restore();
+        }
+
+        function updateRemotePlayerTags() {
+          if (!remoteTagsLayer) return;
+          if (!gameStarted || network.remotePlayers.size === 0) {
+            remoteTagsLayer.innerHTML = '';
+            return;
+          }
+
+          const width = window.innerWidth || 1920;
+          const height = window.innerHeight || 1080;
+          const aspect = width / height;
+          const cp = Math.cos(player.pitch);
+          const ww = [Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp];
+          const uu_raw = [-ww[2], 0.0, ww[0]];
+          const uu_len = Math.hypot(uu_raw[0], uu_raw[2]) || 1.0;
+          const uu = [uu_raw[0] / uu_len, 0.0, uu_raw[2] / uu_len];
+          const vv = [
+            uu[1] * ww[2] - uu[2] * ww[1],
+            uu[2] * ww[0] - uu[0] * ww[2],
+            uu[0] * ww[1] - uu[1] * ww[0]
+          ];
+
+          let tagsHtml = '';
+          for (const [id, rp] of network.remotePlayers) {
+            const headX = rp.currentPos.x;
+            const headY = rp.currentPos.y + 0.32;
+            const headZ = rp.currentPos.z;
+
+            const dx = headX - player.position.x;
+            const dy = headY - player.position.y;
+            const dz = headZ - player.position.z;
+
+            const forwardDist = dx * ww[0] + dy * ww[1] + dz * ww[2];
+            if (forwardDist > 0.4 && forwardDist < 50.0) {
+              const camX = dx * uu[0] + dy * uu[1] + dz * uu[2];
+              const camY = dx * vv[0] + dy * vv[1] + dz * vv[2];
+              const scrX = ((camX / forwardDist) * (player.currentFovFactor / aspect) * 0.5 + 0.5) * width;
+              const scrY = (0.5 - (camY / forwardDist) * player.currentFovFactor * 0.5) * height;
+
+              if (scrX >= 20 && scrX <= width - 20 && scrY >= 20 && scrY <= height - 20) {
+                const distM = Math.hypot(dx, dy, dz).toFixed(1);
+                const opacity = Math.max(0.2, Math.min(1.0, 1.2 - forwardDist / 40.0));
+                tagsHtml += `<div class="remote-player-tag" style="transform: translate(-50%, -100%) translate(${scrX.toFixed(1)}px, ${scrY.toFixed(1)}px); opacity: ${opacity.toFixed(2)};">
+                  <span class="tag-beacon"></span>
+                  <span>${rp.name}</span>
+                  <span class="tag-dist">(${distM}m)</span>
+                </div>`;
+              }
+            }
+          }
+          remoteTagsLayer.innerHTML = tagsHtml;
+        }
+
+        window.addEventListener('keydown', (e)=>{
+          const targetTag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+          if (targetTag === 'input' || targetTag === 'textarea') return;
+          if(!gameStarted) return;
+          if(e.key.toLowerCase()==='i'){ hudVisible=!hudVisible; hudEl.classList.toggle('visible', hudVisible); }
+          if(e.key.toLowerCase()==='m'){ minimapVisible=!minimapVisible; minimapCanvas.classList.toggle('visible', minimapVisible); }
+        });
+
+        const menuCard = document.querySelector('.poolrooms-menu-card');
+        if (menuCard) {
+          window.addEventListener('mousemove', (e) => {
+            const rect = menuCard.getBoundingClientRect();
+            menuCard.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+            menuCard.style.setProperty('--my', `${e.clientY - rect.top}px`);
+          });
+        }
+
+        const sensSlider = document.getElementById('sensitivity-slider');
+        const sensVal = document.getElementById('sensitivity-val');
+        function updateSensUI() {
+          if (!sensSlider) return;
+          const v = parseFloat(sensSlider.value) || 1.0;
+          player.sensitivity = v;
+          if (sensVal) sensVal.textContent = `${v.toFixed(2)}x`;
+          const min = parseFloat(sensSlider.min) || 0.3;
+          const max = parseFloat(sensSlider.max) || 2.5;
+          const pct = ((v - min) / (max - min)) * 100;
+          sensSlider.style.background = `linear-gradient(90deg, #7ce3d0 ${pct}%, rgba(255,255,255,0.12) ${pct}%)`;
+        }
+        sensSlider?.addEventListener('input', () => {
+          updateSensUI();
+          audio?.playUiHover();
+        });
+        updateSensUI();
+
+        document.querySelectorAll('button, .graphics-option, .pause-preset-btn').forEach(btn => {
+          btn.addEventListener('mouseenter', () => audio?.playUiHover());
+          btn.addEventListener('click', () => audio?.playUiClick());
+        });
+
+        // Multiplayer Button in start menu top right corner
+        if (btnPlayMp && mpModal) {
+          btnPlayMp.addEventListener('click', (e) => {
+            e.stopPropagation();
+            mpModal.classList.remove('hidden');
+            mpCodeInput.focus();
+          });
+        }
+
+        if (btnMpClose && mpModal) {
+          btnMpClose.addEventListener('click', () => {
+            mpModal.classList.add('hidden');
+          });
+        }
+
+        // 5-Digit Number Code Formatting
+        mpCodeInput.addEventListener('input', (e) => {
+          const val = e.target.value.replace(/\D/g, '').slice(0, 5);
+          e.target.value = val;
+          if (val.length === 5) {
+            btnJoinCode.classList.add('primary');
+          }
+        });
+
+        mpCodeInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            btnJoinCode.click();
+          }
+        });
+
+        // Join Game with 5-digit code or enter poolrooms if room created
+        btnJoinCode.addEventListener('click', () => {
+          if (btnJoinCode.dataset.action === 'enter') {
+            enterGame();
+            return;
+          }
+
+          const code = mpCodeInput.value.trim().replace(/\D/g, '');
+          if (code.length !== 5) {
+            mpStatusMsg.innerHTML = '<span style="color:#ff5b5b;">Please enter a valid 5-digit number code!</span>';
+            return;
+          }
+
+          const roomSeed = seedFromRoomCode(code);
+          levelSeedInt = roomSeed;
+          player.seed = roomSeed;
+          window.currentLevelSeed = roomSeed;
+          uniformData[3] = roomSeed;
+
+          mpStatusMsg.innerHTML = `<span style="color:#7ce3d0;">Connecting across devices to Room #${code}... Entering Level 37!</span>`;
+          network.joinRoom(code);
+          if (btnCopyCode) btnCopyCode.style.display = 'inline-flex';
+          setTimeout(() => {
+            enterGame();
+          }, 350);
+        });
+
+        // "create code" in bottom right corner
+        btnCreateCode.addEventListener('click', () => {
+          const randomCode = String(Math.floor(10000 + Math.random() * 90000));
+          mpCodeInput.value = randomCode;
+          if (btnCopyCode) btnCopyCode.style.display = 'inline-flex';
+
+          const roomSeed = seedFromRoomCode(randomCode);
+          levelSeedInt = roomSeed;
+          player.seed = roomSeed;
+          window.currentLevelSeed = roomSeed;
+          uniformData[3] = roomSeed;
+
+          network.hostRoom(randomCode, levelSeedInt, player.position);
+          mpStatusMsg.innerHTML = `Room Created! 5-Digit Code: <strong style="color:#ffcc00;font-size:16px;letter-spacing:0.1em;">${randomCode}</strong><br>Tell friends to enter this code on their phone or PC, then dive into the poolrooms!`;
+
+          if (startBtnText) startBtnText.textContent = `HOST ROOM #${randomCode}`;
+          btnJoinCode.dataset.action = 'enter';
+          btnJoinCode.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><polyline points="12 8 12 12 15 15"/></svg><span>ENTER POOLROOMS</span>`;
+        });
+
+        // Copy code button
+        btnCopyCode.addEventListener('click', () => {
+          const code = mpCodeInput.value.trim();
+          if (code) {
+            navigator.clipboard.writeText(code).then(() => {
+              copyCodeText.textContent = 'COPIED!';
+              setTimeout(() => { copyCodeText.textContent = 'Copy Code'; }, 2000);
+            }).catch(() => {
+              copyCodeText.textContent = 'CODE: ' + code;
+            });
+          }
+        });
+
+        const graphicsWidget = document.getElementById('graphics-widget');
+        const graphicsBtn = document.getElementById('graphics-btn');
+
+        if (graphicsBtn && graphicsWidget) {
+          graphicsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            graphicsWidget.classList.toggle('open');
+            const isOpen = graphicsWidget.classList.contains('open');
+            graphicsBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+          });
+
+          document.addEventListener('click', (e) => {
+            if (!graphicsWidget.contains(e.target)) {
+              graphicsWidget.classList.remove('open');
+              graphicsBtn.setAttribute('aria-expanded', 'false');
+            }
+          });
+        }
+
+        document.querySelectorAll('.graphics-option').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const preset = btn.getAttribute('data-preset');
+            if (preset) setGraphicsPreset(preset);
+          });
+        });
+
+        document.querySelectorAll('.pause-preset-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const preset = btn.getAttribute('data-preset');
+            if (preset) setGraphicsPreset(preset);
+          });
+        });
+
+        document.querySelector('.pause-card')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+
+        for(let i=0; i<32; i++){
+          uniformData[12+i*4] = 0.0;
+          uniformData[13+i*4] = 0.0;
+          uniformData[14+i*4] = -999.0;
+          uniformData[15+i*4] = 0.0;
+        }
+
+        for(let i=0; i<8; i++){
+          const base = 140 + i * 8;
+          uniformData[base + 3] = 0.0;
+        }
+
+        let currentPreset = 'ultra';
+        try {
+          currentPreset = localStorage.getItem('poolrooms_graphics_preset') || 'ultra';
+        } catch(e){}
+
+        function setGraphicsPreset(preset) {
+          if (!['low', 'medium', 'high', 'ultra'].includes(preset)) return;
+          currentPreset = preset;
+
+          try {
+            localStorage.setItem('poolrooms_graphics_preset', preset);
+          } catch (e) {}
+
+          document.querySelectorAll('.graphics-option').forEach(btn => {
+            const match = btn.getAttribute('data-preset') === preset;
+            btn.classList.toggle('active', match);
+          });
+
+          document.querySelectorAll('.pause-preset-btn').forEach(btn => {
+            const match = btn.getAttribute('data-preset') === preset;
+            btn.classList.toggle('active', match);
+          });
+
+          const badgeEl = document.getElementById('graphics-badge');
+          if (badgeEl) {
+            const names = { low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra' };
+            badgeEl.textContent = names[preset] || 'Ultra';
+          }
+
+          resizeCanvas();
+
+          if (hudGraphicsEl) {
+            hudGraphicsEl.textContent = `Graphics: ${currentPreset.toUpperCase()} (${canvas.width}x${canvas.height})`;
+          }
+
+          if (!gameStarted && typeof renderPreviewFrame === 'function') {
+            renderPreviewFrame();
+          }
+        }
+
+        function resizeCanvas() {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const aspect = (window.innerWidth && window.innerHeight) ? (window.innerWidth / window.innerHeight) : (16 / 9);
+          let w, h;
+
+          if (currentPreset === 'low') {
+            h = 144;
+            w = Math.max(1, Math.round(h * aspect));
+            canvas.classList.add('pixelated');
+            canvas.style.imageRendering = 'pixelated';
+          } else if (currentPreset === 'medium') {
+            h = 480;
+            w = Math.max(1, Math.round(h * aspect));
+            canvas.classList.remove('pixelated');
+            canvas.style.imageRendering = 'auto';
+          } else if (currentPreset === 'high') {
+            h = 720;
+            w = Math.max(1, Math.round(h * aspect));
+            canvas.classList.remove('pixelated');
+            canvas.style.imageRendering = 'auto';
+          } else {
+            w = Math.max(1, Math.floor((window.innerWidth || 1920) * dpr));
+            h = Math.max(1, Math.floor((window.innerHeight || 1080) * dpr));
+            canvas.classList.remove('pixelated');
+            canvas.style.imageRendering = 'auto';
+          }
+
+          if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+          }
+        }
+        window.addEventListener('resize', resizeCanvas);
+        setGraphicsPreset(currentPreset);
+
+        function renderPreviewFrame() {
+          if (gameStarted) return;
+          uniformData[0] = canvas.width;
+          uniformData[1] = canvas.height;
+          uniformData[2] = 0.0;
+          uniformData[3] = levelSeedInt;
+          uniformData[4] = player.position.x;
+          uniformData[5] = player.position.y;
+          uniformData[6] = player.position.z;
+          uniformData[7] = 0.0;
+          const cp = Math.cos(player.pitch);
+          uniformData[8] = Math.sin(player.yaw) * cp;
+          uniformData[9] = Math.sin(player.pitch);
+          uniformData[10] = -Math.cos(player.yaw) * cp;
+          uniformData[11] = player.currentFovFactor;
+
+          device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+          const encoder = device.createCommandEncoder();
+          const pass = encoder.beginRenderPass({
+            colorAttachments: [{
+              view: context.getCurrentTexture().createView(),
+              clearValue: { r: 0, g: 0, b: 0, a: 1 },
+              loadOp: 'clear',
+              storeOp: 'store'
+            }]
+          });
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bindGroup);
+          pass.draw(3);
+          pass.end();
+          device.queue.submit([encoder.finish()]);
+        }
+        try { renderPreviewFrame(); } catch(e) {}
+
+        function frame(){
+          const now=performance.now(); const dt=(now-lastTime)/1000.0; lastTime=now;
+          fpsSmoothed += ((dt>0?(1/dt):60)-fpsSmoothed)*0.08;
+          player.update(dt); player.updateOxygen(Math.min(dt,0.05)); player.updateZoom(dt);
+          const nowSec = (now-startTime)/1000.0;
+
+          // Multiplayer position broadcast and interpolation across devices
+          network.sendPosition(player);
+          network.updateInterpolation(dt, (rx, rz, str) => {
+            spawnWaterRipple(rx, rz, str);
+          });
+
+          // Local player ripples
+          if (player._inWater && !wasInWater) {
+            spawnWaterRipple(player.position.x, player.position.z, 2.5);
+          }
+          if (player._inWater) {
+            let dx = player.position.x - lastRipplePos.x; let dz = player.position.z - lastRipplePos.z;
+            let dist = Math.sqrt(dx*dx + dz*dz);
+            if (dist > 0.18) {
+               spawnWaterRipple(player.position.x, player.position.z, Math.min(1.5, (dist/Math.max(dt,0.001))*0.4 + 0.3));
+               lastRipplePos.x = player.position.x;
+               lastRipplePos.z = player.position.z;
+            }
+          } else {
+            lastRipplePos.x = player.position.x;
+            lastRipplePos.z = player.position.z;
+          }
+          wasInWater = player._inWater;
+
+          if (player.locked && player.distanceMovedSinceStep > (player.isSubmerged ? 2.3 : 1.65)) {
+            player.distanceMovedSinceStep = 0;
+            if (player.isSubmerged) audio.playSwimStroke(); else if (player.isGrounded) audio.playFootstep();
+          }
+          if (player.isSubmerged !== wasSubmerged) { audio.playSplash(); audio.setUnderwater(player.isSubmerged); wasSubmerged = player.isSubmerged; }
+
+          vignetteEl.classList.toggle('underwater', player.isSubmerged);
+          vignetteEl.classList.toggle('low-oxygen', player.isSubmerged && player.oxygen<=0.001);
+          oxygenWrap.classList.toggle('visible', player.isSubmerged || player.oxygen<0.999);
+
+          const oxyPct = Math.round(player.oxygen * 100);
+          if (oxyPct !== lastOxygenPct) {
+            oxygenFillEl.style.width = oxyPct + '%';
+            oxygenFillEl.classList.toggle('low', oxyPct < 25);
+            const oxyValEl = document.getElementById('oxygen-pct-val');
+            if (oxyValEl) oxyValEl.textContent = oxyPct + '%';
+            oxygenWrap.classList.toggle('critical', player.isSubmerged && oxyPct < 25);
+            lastOxygenPct = oxyPct;
+          }
+          crosshair.classList.toggle('zooming', !!player.keys.x);
+
+          if(hudVisible && (now - lastHudUpdate > 150)){
+            lastHudUpdate = now;
+            hudFpsEl.textContent=`FPS: ${fpsSmoothed.toFixed(0)}`;
+            const dotFps = document.getElementById('hud-dot-fps');
+            if (dotFps) {
+              dotFps.className = 'hud-dot' + (fpsSmoothed >= 55 ? '' : (fpsSmoothed >= 35 ? ' amber' : ' red'));
+            }
+            if(hudGraphicsEl) hudGraphicsEl.textContent=`Graphics: ${currentPreset.toUpperCase()} (${canvas.width}x${canvas.height})`;
+            hudBiomeEl.textContent=`Biome: ${BIOME_NAMES[getTerrainHeight(player.position.x, player.position.z, player.seed).biome]}`;
+            hudPosEl.textContent=`Pos: ${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)}`;
+            const deg = Math.round(((player.yaw * 180 / Math.PI) % 360 + 360) % 360);
+            const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            const dirName = dirs[Math.round(deg / 45) % 8];
+            const compassEl = document.getElementById('hud-compass-val');
+            if (compassEl) compassEl.textContent = `HEADING: ${dirName} ${String(deg).padStart(3, '0')}°`;
+          }
+          if(minimapVisible) drawMinimap();
+          updateRemotePlayerTags();
+
+          // Pack Uniform Buffer Data
+          uniformData[0]=canvas.width; uniformData[1]=canvas.height; uniformData[2]=nowSec; uniformData[3]=levelSeedInt;
+          uniformData[4]=player.position.x; uniformData[5]=player.position.y; uniformData[6]=player.position.z; uniformData[7]=player.isSubmerged?1.0:0.0;
+          const cp = Math.cos(player.pitch);
+          uniformData[8] = Math.sin(player.yaw) * cp;
+          uniformData[9] = Math.sin(player.pitch);
+          uniformData[10] = -Math.cos(player.yaw) * cp;
+          uniformData[11] = player.currentFovFactor;
+
+          // Upload Remote Players (Backrooms Hazmat Suits)
+          let pSlot = 0;
+          for (const [id, rp] of network.remotePlayers) {
+            if (pSlot >= 8) break;
+            const base = 140 + pSlot * 8;
+            uniformData[base + 0] = rp.currentPos.x;
+            uniformData[base + 1] = rp.currentPos.y;
+            uniformData[base + 2] = rp.currentPos.z;
+            uniformData[base + 3] = 1.0;
+            uniformData[base + 4] = rp.currentYaw;
+            uniformData[base + 5] = rp.currentPitch;
+            uniformData[base + 6] = rp.submerged ? 1.0 : 0.0;
+            uniformData[base + 7] = rp.walkPhase;
+            pSlot++;
+          }
+          for (; pSlot < 8; pSlot++) {
+            const base = 140 + pSlot * 8;
+            uniformData[base + 3] = 0.0;
+          }
+
+          device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+          const encoder=device.createCommandEncoder();
+          const pass=encoder.beginRenderPass({ colorAttachments:[{ view: context.getCurrentTexture().createView(), clearValue:{r:0,g:0,b:0,a:1}, loadOp:'clear', storeOp:'store' }] });
+          pass.setPipeline(pipeline); pass.setBindGroup(0, bindGroup); pass.draw(3); pass.end();
+          device.queue.submit([encoder.finish()]);
+          if(gameStarted) requestAnimationFrame(frame);
+        }
+
+        startButton.addEventListener('click', ()=>{
+          enterGame();
+          try { window.focus(); } catch(e){}
+        });
+        canvas.addEventListener('click', ()=>{
+          if(gameStarted && chatPanel.classList.contains('hidden')) {
+            try { canvas.requestPointerLock()?.catch?.(() => {}); } catch(e){}
+          }
+          try { window.focus(); } catch(e){}
+          audio.resume();
+        });
+        pauseOverlay.addEventListener('click', ()=>{
+          if(gameStarted && chatPanel.classList.contains('hidden')) {
+            try { canvas.requestPointerLock()?.catch?.(() => {}); } catch(e){}
+          }
+          try { window.focus(); } catch(e){}
+        });
+        document.addEventListener('pointerlockchange', ()=>{
+          player.locked = (document.pointerLockElement===canvas);
+          if(gameStarted){
+            const isChatOpen = !chatPanel.classList.contains('hidden');
+            if (!isChatOpen) {
+              pauseOverlay.classList.toggle('hidden', player.locked);
+            } else {
+              pauseOverlay.classList.add('hidden');
+            }
+            crosshair.style.display = player.locked ? 'block' : 'none';
+          }
+        });
+        window.addEventListener('beforeunload', () => {
+          if (network && network.roomCode) {
+            network.publish({ t: 'leave', id: network.myId, name: network.username });
+          }
+        });
+      }
+
+      initWebGPU();
+    </script>
+  </body>
+</html>
